@@ -4,11 +4,11 @@ Two packages that produce and check the [Gleipnir record format](../spec/format.
 
 | Package | What it is | Runs in |
 |---|---|---|
-| [`@getgleipnir/verify`](packages/verify) | Offline verifier for record bundles, plus the `gleipnir-verify` CLI. `@getgleipnir/verify/mandate`: the mandate checker ([spec 0.5 draft](../spec/mandate.md), 0.4 objects still accepted), same results as the Python reference on every shared vector | Node 20+ and browsers (pure JS: `@noble/curves`, `@noble/hashes`, `fflate`) |
+| [`@getgleipnir/verify`](packages/verify) | Offline verifier for record bundles, plus the `gleipnir-verify` CLI. `@getgleipnir/verify/mandate`: the mandate checker ([spec 0.6 draft](../spec/mandate.md), 0.4 and 0.5 objects still accepted), same results as the Python reference on every shared vector | Node 20+ and browsers (pure JS: `@noble/curves`, `@noble/hashes`, `fflate`) |
 | [`@getgleipnir/sdk`](packages/sdk) | Recorder that wraps agent tool calls into signed, hash-chained, segmented, anchored records; the `gleipnir-mandate-mcp` MCP server for agents | Node 20+ |
 | [`packages/hosted`](packages/hosted) | Hosted sandbox mandate checker (Netlify Functions), not published to npm. Not for real money | Netlify |
 
-Package versions are 0.4.0, the last release (spec 0.4); the code implements spec 0.5 (draft).
+Package versions are 0.4.0, the last release (spec 0.4); the code implements spec 0.6 (draft).
 
 A bundle written by the TypeScript SDK verifies with the Python `gleipnir-verify`, and a bundle written by the Python SDK verifies with the TypeScript one. Both verifiers return the same report (result, finding codes, messages, summary) for the same bundle.
 

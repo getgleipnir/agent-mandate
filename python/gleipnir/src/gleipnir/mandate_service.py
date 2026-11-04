@@ -383,7 +383,7 @@ class MandateTools:
         unlisted = {"block": "blocked: only listed and approved payees can be paid",
                     "escalate": "waits for a person to approve it (new_payee)"}.get(
             sc.get("unlisted_payees", "block") if controlled else "", "allowed (no payee list)")
-        approved = [ap["payee"] for ap in self._approvals(md)] if m.version_of(md, "mandate") == m.V5 else []
+        approved = [ap["payee"] for ap in self._approvals(md)] if m.version_of(md, "mandate") in m.V56 else []
         return {"mandate": md.get("id"), "company": md.get("company", {}).get("name"),
                 "agent": md.get("agent", {}).get("id"), "currency": sc.get("currency"),
                 "max_per_payment": sc.get("max_per_payment"), "max_per_period": sc.get("max_per_period"),
@@ -441,7 +441,7 @@ class MandateTools:
     def check_payment(self, a: dict) -> dict:
         mandate, payment = self._mandate(), a["payment"]
         approvals = None
-        if self.approval_paths and m.version_of(mandate, "mandate") == m.V5 and isinstance(payment, dict):
+        if self.approval_paths and m.version_of(mandate, "mandate") in m.V56 and isinstance(payment, dict):
             acc = payment.get("payee", {}).get("account") if isinstance(payment.get("payee"), dict) else None
             approvals = [ap for ap in self._approvals(mandate) if ap["payee"]["account"] == acc][:m.MAX_APPROVALS]
         if self.bank_url:

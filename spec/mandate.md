@@ -1,4 +1,4 @@
-# Gleipnir mandate format, version 0.5 (draft)
+# Gleipnir mandate format, version 0.6 (draft)
 
 Normative draft. A **mandate** is a power of attorney for an AI agent: a person who may sign for a company states what one agent may pay, from which of the company's accounts, to whom, how much and until when. A bank or payment service provider (PSP) checks the mandate before it executes a transfer the agent started, and records a signed **decision**.
 
@@ -26,6 +26,15 @@ sequenceDiagram
 - **Where trust comes from.** Only from the bank's own records (or a vLEI credential), never from the mandate. Keys in a mandate count only if the bank enrolled them for that person. The debtor account counts only if the bank holds it for that company.
 - **What the bank gets.** One extra, deterministic check before execution, and a receipt it can show anyone later.
 - **Conformance.** A Python reference and a TypeScript port pass the same published test vectors (Appendix B).
+
+Changes from 0.5 to 0.6 (additive, optional: only objects that use something new are `0.6`; a 0.6 checker accepts every 0.4 and 0.5 object and checks it exactly as before, section 13.1). The **agent protocol profile** (section 14) lets a mandate travel inside agent protocols such as the Personal Agent Protocol:
+
+- **Agent key binding** (14.1). `agent.jkt`, the RFC 7638 JWK thumbprint of the agent's key, comparable to PAP's `cnf.jwk` and DPoP's `jkt`. The checker compares it with the key the company's own protocol layer saw the agent prove (`agent_key_mismatch`, step 6a).
+- **Counterparties as domains** (14.2). `scope.counterparties`, canonical domains matched exactly, no wildcards (`counterparty_not_on_mandate`, step 18a).
+- **Principals without user data** (14.3). Pairwise signer ids (`pairwise:…`, no name or role) and a salted `principal_commitment` the checker can confirm when given the opening (`principal_mismatch`).
+- **Operation approvals** (14.4). A new signed object, `gleipnir/operation_approval/0.6`: the principal signs, with a passkey or an Ed25519 or P-256 key, the JCS encoding of one revision of one operation (`mandate_hash`, `counterparty`, `operation_id`, `revision`, `terms`, `expires_at`, `approved_at`). The checker verifies it against the counterparty's own record of the operation, makes each operation single-use, and signs a `gleipnir/decision/0.6` that names the operation.
+- **Token Status List** (14.5). `status.status_list {idx, uri}` (draft-ietf-oauth-status-list) next to `status_url`: INVALID is `mandate_revoked`, SUSPENDED the new `mandate_suspended`, anything the checker cannot confirm `status_unavailable` (step 17a).
+- **Versioning** (13.1). Mandates that use a 0.6 field, operation approvals and decisions about 0.6 mandates carry `0.6`; a 0.6 mandate is revoked with a 0.5 revocation. Everything else is unchanged.
 
 Changes from 0.4.1 to 0.5 (additive: only objects that use something new are `0.5`; a 0.5 checker accepts every 0.4 object and checks it exactly as 0.4 did, section 13.1):
 
@@ -78,10 +87,11 @@ Changes from 0.2 to 0.3:
 | `decision` | the checker (bank, PSP or a hosted checker) | The result of checking one payment against one mandate. |
 | `override` | a bank officer, or the company's signatories | Resolves an escalation: allow or block this payment. |
 | `payee_approval` | the company's signatories | This payee account counts as listed on this mandate (section 7.2). New in 0.5. |
+| `operation_approval` | the principal (the mandate's signatories) | Approves one revision of one operation of one counterparty under this mandate (section 14.4). New in 0.6. |
 | `revocations` | the checker that publishes it | A dated list of the revocations a checker holds, for other checkers (section 9.2). |
 | `keys` | (served by the bank over https) | The bank's checker keys with validity windows (section 10.1). |
 
-Every object has `v: "gleipnir/<object>/<version>"`, `0.4` or `0.5` (section 13.1); mandates, delegations, payments, revocations, overrides, payee approvals and decisions have an `id`.
+Every object has `v: "gleipnir/<object>/<version>"`, `0.4`, `0.5` or `0.6` (section 13.1); mandates, delegations, payments, revocations, overrides, payee approvals and decisions have an `id` (an operation approval is named by its hash).
 
 ## 2. Chain of trust
 
@@ -172,6 +182,7 @@ Assurance levels: (a) alone is the light level that covers SMEs at their own ban
 - `valid_until` and `issued_at` are required. Producers should keep mandates short (weeks or months, not years).
 - `status_url` is optional: an `https://` URL, ASCII, at most 2048 characters. If present, the checker must get a valid signed status for every payment (section 9.1).
 - `delegation` is optional: the chain of delegations the signer's authority comes from (section 5). Only with a single `signer`.
+- 0.6 adds optional fields for agent protocols (section 14): `agent.jkt`, `scope.counterparties`, `status` (a Token Status List entry), `principal_commitment`, and pairwise signer ids. A mandate that uses any of them must be `gleipnir/mandate/0.6`.
 - To change a mandate (new limit, new payee), issue a new one and revoke the old one. Mandates are never edited in place; any edit breaks the signature. For a new payee, or a payee's new account, a 0.5 mandate can instead be extended by a payee approval (section 7.2).
 
 ### 4.2 Multi-signature and joint signing
@@ -350,6 +361,7 @@ The checker runs these steps in order and stops at the first failure. Each step 
 | 4 | Every mandate signature present is valid for its signer's key (at least one present) | `mandate_bad_signature` | block |
 | 5 | Delegation chain, if any, linked and signed (section 5) | `delegation_broken` / `delegation_bad_signature` | block |
 | 6 | Agent signature valid, if the mandate names an agent key | `agent_bad_signature` | block |
+| 6a | 0.6: a mandate that names its agent only by `agent.jkt` matches the key in the context; a principal opening in the context matches the commitment (section 14) | `agent_key_mismatch` / `principal_mismatch` | block |
 | 7 | `from_account` is in `from_accounts`, and the bank holds it for this company: `holds` answers the bank's customer id. With a period limit (of the mandate or a link), the bank holds every account that object lists, for the same customer | `account_not_on_mandate` / `account_not_held` | block |
 | 8 | Idempotent retry: if this customer's payment log holds a decision for this payment `id` and the same payment hash, return that decision unchanged (read only) | (earlier decision) | |
 | 9 | `requested_at` within `max_skew` of the checker's clock | `clock_skew` | block |
@@ -363,7 +375,9 @@ The checker runs these steps in order and stops at the first failure. Each step 
 | 15 | `valid_from ≤ now ≤ valid_until` | `mandate_not_yet_valid` / `mandate_expired` | block |
 | 16 | Not revoked: a valid revocation of the mandate or of a delegation link (section 9) with `revoked_at ≤ now` | `mandate_revoked` / `delegation_revoked` | block |
 | 17 | `status_url`, if present: a valid signed status (section 9.1). `revoked` blocks | `mandate_revoked` / `status_unavailable` | block / escalate |
+| 17a | 0.6 `status`, if present: the mandate's Token Status List entry is VALID (section 14.5) | `mandate_revoked` / `mandate_suspended` / `status_unavailable` | block / escalate |
 | **In scope** | | | |
+| 18a | 0.6 `scope.counterparties`, if present: the context's counterparty is on it, exactly (section 14.2) | `counterparty_not_on_mandate` | block |
 | 18 | Rail allowed | `rail_not_allowed` | block |
 | 19 | The rail carries the currency and both account schemes (section 6.1) | `rail_mismatch` | block |
 | 20 | Currency matches | `currency_mismatch` | block |
@@ -371,7 +385,7 @@ The checker runs these steps in order and stops at the first failure. Each step 
 | 22 | `amount ≤ max_per_payment` | `over_payment_limit` | escalate |
 | 23 | The amount is atomically reserved against the mandate's period limit and the period limit of every delegation link above it, all or nothing | `over_period_limit` / `ledger_missing` | escalate |
 
-**Step 21 in detail.** For a 0.4 mandate, step 21 is exactly as in 0.4: the payee account must be on the list (`payee_not_on_mandate`), and payee approvals are not looked at. For a 0.5 mandate, in this order:
+**Step 21 in detail.** For a 0.4 mandate, step 21 is exactly as in 0.4: the payee account must be on the list (`payee_not_on_mandate`), and payee approvals are not looked at. For a 0.5 or 0.6 mandate, in this order:
 
 1. The payee account equals a listed account: passes (`payee_on_mandate`).
 2. Neither `payees` nor `unlisted_payees` is present: passes, unless the checker's policy requires payee control (`payees_required`).
@@ -384,7 +398,7 @@ The **name key** of a name is computed the same way by every checker: Unicode NF
 
 Why this normalization and not a stricter one: the name rule can only turn a payment into a **block**; it can never allow anything. A broader match therefore never opens a hole. Its only cost is a false block when two genuinely different payees share a key (for example "A.B. Consulting" listed and "AB Consulting" new), which the company resolves with a payee approval for the new account (step 3 comes before step 4). A stricter rule (exact text) would let "Brenner Stahl A.G." with a new account through to an escalation, where a tired person might approve it. What the key does not catch: look-alikes outside the table, misspellings ("Brener Stahl"), and other legal forms ("Brenner Stahl GmbH"). Those payees are unlisted: blocked or escalated, never allowed (section 11). Implementations of different Unicode versions may differ on characters assigned after Unicode 13; the conformance vectors use only older characters.
 
-Steps 1 to 6 need no external system: an unsigned, forged or altered submission is blocked before the checker asks its own records, holds a payment id or returns a cached decision. In steps 10 to 12, a signer the source rejects (step 11) blocks immediately. Unknown signers only matter if the accepted ones are not enough: then the outcome is `signer_unknown` (escalate), because another source may know them. A dependency the checker cannot reach (authority source, account records, payment log, ledger) gives `checker_unavailable` (escalate). Any input the checker cannot process gives a signed `block`; a checker never raises on input and never allows a payment it could not fully check.
+Step 18a runs right after the revocation steps, before step 18. Steps 1 to 6a need no external system: an unsigned, forged or altered submission is blocked before the checker asks its own records, holds a payment id or returns a cached decision. In steps 10 to 12, a signer the source rejects (step 11) blocks immediately. Unknown signers only matter if the accepted ones are not enough: then the outcome is `signer_unknown` (escalate), because another source may know them. A dependency the checker cannot reach (authority source, account records, payment log, ledger) gives `checker_unavailable` (escalate). Any input the checker cannot process gives a signed `block`; a checker never raises on input and never allows a payment it could not fully check.
 
 Outcomes:
 
@@ -564,7 +578,7 @@ Signed with the prefix `"gleipnir/revocations/v0.4\n"` by the issuer's checker k
 }
 ```
 
-Signed by the checker with the prefix `"gleipnir/decision/v<version>\n"`: a decision is in the draft of the mandate it is about (`gleipnir/decision/0.5` for a 0.5 mandate, `0.4` otherwise, also when the mandate could not be read). `checked_at` is the checker's clock. A decision is verified against the bank's **known** checker keys, obtained out of band (for example from the bank's published key list); the `checker.public_key` inside the decision only says which of those keys signed it and is never trusted on its own. `id` is random. With multi-signature, `checks` lists `signer_authorized:<source>` per counted signer and `signatures:<n>/<needed>`; with delegation, `delegation:<links>`. Once the signers' authority is checked, `signers` lists exactly whom the bank counted. A decision made on an override also carries `escalation`, `override`, `approvers`, `waived` and `escalated_at` (section 7.1). A decision that relied on a payee approval names it: `payee_approval: {id, hash, approvers}` (section 7.2).
+Signed by the checker with the prefix `"gleipnir/decision/v<version>\n"`: a decision is in the draft of the mandate it is about (`gleipnir/decision/0.6` for a 0.6 mandate and for every operation decision, `0.5` for a 0.5 mandate, `0.4` otherwise, also when the mandate could not be read). `checked_at` is the checker's clock. A decision is verified against the bank's **known** checker keys, obtained out of band (for example from the bank's published key list); the `checker.public_key` inside the decision only says which of those keys signed it and is never trusted on its own. `id` is random. With multi-signature, `checks` lists `signer_authorized:<source>` per counted signer and `signatures:<n>/<needed>`; with delegation, `delegation:<links>`. Once the signers' authority is checked, `signers` lists exactly whom the bank counted. A decision made on an override also carries `escalation`, `override`, `approvers`, `waived` and `escalated_at` (section 7.1). A decision that relied on a payee approval names it: `payee_approval: {id, hash, approvers}` (section 7.2).
 
 **Receipt.** Mandate + payment + decision (+ the override, and the payee approval, if the decision names them) form a receipt anyone can check offline, months later, without the bank or Gleipnir: the decision is signed by a known bank key; it names exactly this mandate and payment by hash, and exactly this override; every mandate signature, every delegation link, the agent signature and every override signature are valid; and every person the decision lists in `signers` and `approvers`, and in the payee approval's `approvers`, has a valid signature in what is presented; a named payee approval names this mandate and this payee account. The receipt reports those lists, not whatever signatures happen to be attached. The receipt shows who authorized the payment (signers and chain), which account paid whom, who approved an exception, which source the bank relied on, and what the bank decided and when. Decisions may be appended to a hash-chained log in the record format of format.md (`kind: "note"` with `note.decision`), so the company, the bank and an auditor can show what was checked and when.
 
@@ -639,6 +653,17 @@ Keys are never removed, only given an `until`, so a receipt can be checked years
 | 8 Validity | A second checker kept on an old revocation list | Signed lists with `next_update`; stale lists do not count (section 9.2) |
 | 8 Validity | A retired issuer key signs an empty list that is "current" for years | Lists live at most 24 hours; the issuer key must be valid now (section 9.2) |
 | 9 Receipt | A bank rotates keys, or a key leaks | Key set with validity windows and `compromised` (section 10.1) |
+| 6 Agent (0.6) | Another agent, or a thief, presents a copied mandate or operation approval in an agent protocol | `agent.jkt` and `agent_jkt` must be the thumbprint of the key the company saw the agent prove (Session JWT, DPoP); a copy without that private key is `agent_key_mismatch` (14.1, 14.4) |
+| 6 Agent (0.6) | The agent claims a key in a message field | The key comes only from the checker's context, filled by the company's own protocol layer after it verified possession; the checker never reads a key from the agent's payload (14) |
+| 7 Scope (0.6) | A mandate for one company used at another, or at a look-alike or newly created subdomain | Exact, canonical domain match, no wildcards or subdomain matching (`counterparty_not_on_mandate`, 14.2) |
+| 7 Scope (0.6) | An operation approval for one company replayed at another | The approval signs `counterparty`; it must equal the checking company's own domain (`operation_mismatch`, 14.4) |
+| 7 Scope (0.6) | The agent or the company shows the principal one set of terms and performs another; terms edited after signing | The principal signs the JCS bytes of `operation_id`, `revision`, `terms` and `expires_at`; an edit breaks the signature (`operation_approval_invalid`), and the company's own operation must equal what was signed (`operation_mismatch`) |
+| 7 Scope (0.6) | An approval replayed: the same operation performed twice, an old revision approved again, an approval reused after its expiry | One claim per counterparty and `operation_id`, held after an allow; the same approval returns the first decision, any other approval of that operation is `operation_replayed`; `expires_at` is signed (`operation_approval_expired`) |
+| 7 Scope (0.6) | The agent approves on the principal's behalf (PAP's approvals are its word) | The approval needs the signature of a person the company's own authority source enrolled, as many as the mandate needed (`operation_approval_invalid`) |
+| 7 Scope (0.6) | An approval backdated before the mandate, or dated ahead | `approved_at` not before the mandate's `issued_at`, not ahead of the checker's clock (`operation_approval_invalid`) |
+| 8 Validity (0.6) | A status list that is down, stale, replayed, forged, or about another list, to hide a revocation | Signed by a trusted issuer key, `sub` equal to the mandate's `uri`, fresh (`status_list_max_age`, `exp`, at most 24 hours); anything else `status_unavailable`, never pass (14.5) |
+| 8 Validity (0.6) | A decompression bomb or an out-of-range index in a status list | At most 16 MiB decompressed; out of range is `status_unavailable` (14.5) |
+| all (0.6) | Linking a principal across companies or learning who they are from a mandate that travels in a protocol | Pairwise ids without name or role; a salted commitment instead of an identifier; only the hash and the operation approval need to travel (14.3) |
 
 Residual risks:
 
@@ -655,12 +680,19 @@ Residual risks:
 - **Backdated `issued_at` with a retired key.** Section 8: retire only keys that are not compromised.
 - **Payee name.** A payment to a listed or approved account is checked by its account, not by the name the agent writes next to it; the name only matters for catching a changed account (step 21). Where Verification of Payee exists (EU instant payments), the bank's own check applies on top, and is the better check of whether the name belongs to the account.
 - **Authority aliases.** A source that knows one person under several ids must return `person` (section 8), or that person can count twice.
+- **Compromised agent session key (0.6).** A thief holding the agent's current private key, and the principal's operation approval, can present that approval once before the agent does. The approval still covers only that one revision of that one operation at that one company; the company performs it at most once. Keep `expires_at` short.
+- **The device shows other terms than it signs (0.6).** An operation approval proves which bytes the principal's key signed, not what the screen showed. A passkey signs a challenge, not readable text, so a compromised app can show the principal one thing and get a signature over another. The defence is an approving app the principal trusts (the company's or the bank's own, as in section 3) that renders `summary` and `terms` from the signed object itself.
+- **Status list trust (0.6).** A status list issuer the checker trusts can mark any mandate on its list invalid or suspended, and its "valid" carries no person's signature (unlike section 9.1). Checkers trust few issuers and combine lists with direct revocations.
+- **Pairwise ids are only as private as the authority source (0.6).** The company that enrolled a pairwise id knows whose it is; the profile keeps other parties from learning it, not the company. Commitments with weak or reused salts can be guessed.
+- **Agent protocol layer (0.6).** The checker relies on the context: if the company's PAP, DPoP or MCP layer passes an unverified key or the wrong domain, the binding means nothing. The context must come from verified protocol state, never from message content.
 
 ## 12. What this does and does not prove
 
 Proves: named people, accepted by a stated source, signed (or delegated) this scope for this agent, from these accounts; this payment was inside the scope at the time it was checked, or a named person approved the exception; a payee that was not on the mandate was paid only because named signatories approved that exact account (a payee approval) or that one payment (an override); the decision was not changed afterwards.
 
 Does not prove: that the agent understood the invoice, that the invoice is genuine, that a new payee is who its name says (that is Verification of Payee), or that the signers chose wisely. A mandate narrows what can go wrong; it does not replace the bank's fraud and AML controls.
+
+With the agent protocol profile (section 14), a receipt also proves: the request came from the agent whose key thumbprint the mandate or the approval names, as far as the company's protocol layer verified that key; the counterparty was one the mandate lists, by exact domain; a person the company's authority source enrolled signed exactly this revision of this operation, with these terms and this expiry, for this company, under this mandate, and that approval was used once; the mandate was not revoked or suspended in its status list when checked, as far as a trusted issuer said so. It does not prove: that the principal read or understood the terms (only that their key signed them; see the residual risks), that the terms fit the mandate's purpose (the checker does not interpret `terms`), who a pairwise or committed principal is to anyone but the enrolling party, that the agent's key was not stolen, or that a status list issuer is honest.
 
 ## 13. Encoding rules
 
@@ -679,6 +711,8 @@ Objects are I-JSON (RFC 7493), nested at most 32 objects or arrays deep, with on
 - 0.5 mandate: as above, with scope `from_accounts rails? currency max_per_payment max_per_period? payees? unlisted_payees? max_per_unlisted_payee? purpose?`.
 - 0.5 revocation: as above, with exactly one of (`mandate mandate_hash` | `delegation delegation_hash` | `payee_approval payee_approval_hash`).
 - payee approval (0.5): `v id mandate payee approved_at valid_until? reason? sigs x?`, with payee `name account` (both required).
+- 0.6 mandate: as 0.5, plus `status?` and `principal_commitment?` at the top level, agent `id name? public_key? jkt?`, scope `… counterparties?`; `status` is `status_list` only, with exactly `idx uri`.
+- operation approval (0.6): `v mandate_hash counterparty operation_id revision terms? expires_at approved_at agent_jkt? sigs x?`. The operation a counterparty passes to the checker: `operation_id revision summary? terms? expires_at`.
 
 Lengths: `id` at most 128 characters (payments 35), `reference` 140, `company.name`, `agent.name`, person `name` and `role`, payee `name` 140, `purpose` and `reason` 500. Informational strings must be strings. At most 16 payee approvals travel with one payment.
 
@@ -690,6 +724,7 @@ Lengths: `id` at most 128 characters (payments 35), `reference` 140, `company.na
 - A 0.4 mandate is checked **exactly as in 0.4**: same steps, reason codes, `checks` and decision (`gleipnir/decision/0.4`, signed with the 0.4 prefix); payee approvals presented with it are ignored; a 0.4 mandate with a 0.5 field is malformed. The conformance vectors of 0.4 pass unchanged.
 - Revocations of either draft count for any mandate, link or approval they name: a revocation only ever switches something off, so accepting one more form cannot let a payment through.
 - Each object's signature prefix names its own version, so a 0.4 signature never verifies as a 0.5 one or the reverse, and a 0.4 checker refuses every 0.5 object as malformed (unknown version): it fails closed, never open.
+- **0.6 is additive in the same way.** Only a mandate that uses a section 14 field, an operation approval, and every decision about a 0.6 mandate or an operation are 0.6. A 0.6 mandate without those fields is checked exactly like a 0.5 one, and the 0.4 and 0.5 conformance vectors pass unchanged. A 0.4 or 0.5 mandate with a 0.6 field is malformed. 0.6 has no revocation of its own: a 0.5 revocation names a 0.6 mandate by hash. The context (section 14) is ignored for 0.4 and 0.5 mandates. A 0.5 checker refuses 0.6 mandates as malformed: it fails closed.
 
 From 1.0:
 
@@ -698,13 +733,126 @@ From 1.0:
 - Anything that changes the meaning of an existing field, or that a checker must not miss, needs a new major version. Checkers may accept several majors side by side.
 - Reason codes and `checks` strings are stable within a major version; new ones may be added.
 
-## 14. Open questions for 1.0
+## 14. Agent protocol profile (0.6)
+
+Agent protocols such as the Personal Agent Protocol (PAP, draft 0.3) let an agent act for a person at a company: the agent proves its own key on every request, the company is named by its domain, and the person approves each operation with business effect. Their messages must not carry data about the user, and the approval itself is the agent's word: PAP's Operations extension says it "doesn't prove that the User saw the terms or approved them", and lists signed approvals as an open topic for 1.0. This profile lets a mandate, or only its hash, travel inside such a protocol and makes the approval verifiable. Every field is optional; a mandate that uses one is `gleipnir/mandate/0.6` (section 13.1), and a 0.6 mandate without them is checked like a 0.5 one.
+
+The checker receives a **context** next to the objects: what its own systems established about the request, never what the agent claims. `agent_jwk` is the public JWK of the key the agent proved possession of (in PAP, the delegated key in the Session JWT's `poppy_dlg` `cnf.jwk`, or the DPoP key); `counterparty` is the domain the agent acts towards (in PAP, the checking company's own `organization.domain`); `principal` is an opening of a principal commitment (14.3). A context value that is missing or malformed matches nothing.
+
+```json
+{
+  "v": "gleipnir/mandate/0.6",
+  "id": "m_01JC2P",
+  "company": {"name": "Nordhafen Logistik GmbH", "country": "AT"},
+  "agent": {"id": "ap-agent", "jkt": "aVBtapLd11SUVKIMGJfPzOEDuN0sXcmzJQNVT-_sKEU"},
+  "signer": {"id": "pairwise:Qm9iLWF0LXNob3AtZXhhbXBsZQ", "public_key": "ecdsa-p256:…"},
+  "scope": {"from_accounts": […], "currency": "EUR", "max_per_payment": "500.00",
+            "counterparties": ["shop.example.com"]},
+  "status": {"status_list": {"idx": 412, "uri": "https://status.nordhafen.example/lists/1"}},
+  "principal_commitment": "sha256:4976f1a2…",
+  "valid_until": "2026-12-31T23:59:59.000Z",
+  "issued_at": "2026-10-01T08:00:00.000Z",
+  "sig": {"type": "webauthn", …}
+}
+```
+
+### 14.1 Agent key binding
+
+`agent.jkt` is the RFC 7638 JWK thumbprint (SHA-256, base64url without padding, 43 characters) of the agent's public key. Ed25519 keys are `{"crv": "Ed25519", "kty": "OKP", "x"}` (RFC 8037) and P-256 keys `{"crv": "P-256", "kty": "EC", "x", "y"}`; only these required members enter the thumbprint, so a presented JWK may also carry `kid`, `alg` or `use`, never private members. This is the value PAP puts in a Session JWT's `kid`, and DPoP (RFC 9449) in `jkt`, so a company can compare it without parsing anything new. If the mandate also names `agent.public_key`, `agent.jkt` must be that key's thumbprint (otherwise `mandate_malformed`).
+
+Payments (section 7, step 6a): under a mandate that names its agent only by `agent.jkt`, the context's `agent_jwk` must have exactly that thumbprint, otherwise `agent_key_mismatch` (block). A mandate with `agent.public_key` keeps binding its agent by the payment signature (step 6). Operation approvals: see 14.4, step 6.
+
+The checker does not verify possession of the key: the company's protocol layer did that (PAP Session JWT signature, DPoP proof) before it passes `agent_jwk`. A PAP delegated key lives at most 24 hours and is one per user and company, so a mandate that should outlive it names a key the agent keeps (its DPoP key, or a key on a self-hosted agent's device) or no agent key at all, and binds each operation approval to the current session key instead (`agent_jkt`, 14.4).
+
+### 14.2 Counterparties as domains
+
+`scope.counterparties` is a list of 1 to 64 domains the agent may act towards, each at most once. A domain is in canonical form: lowercase ASCII labels of letters, digits and inner hyphens (1 to 63 characters), at least two labels, at most 253 characters, internationalized names as A-labels (`xn--…`), no trailing dot, port, scheme, path or wildcard, and not an IPv4 address. Producers normalize; checkers refuse anything else as malformed and compare domains byte for byte.
+
+Payments (step 18a, after the revocation steps): a mandate with `counterparties` passes only if the context's `counterparty` is on the list; anything else, including a missing one, is `counterparty_not_on_mandate` (block). It adds to the payee rules of step 21; it does not replace them.
+
+No wildcards, and no subdomain matching. `*.shop.example.com` would hand the mandate to every host anyone can create under that name (a forgotten staging host, a subdomain taken over through a dangling DNS record, a customer-content host), and PAP treats every domain as its own company unless they share an issuer. A company with several domains is listed once per domain; a mandate that should cover a whole platform names it by a short list. Matching is exact, so `SHOP.example.com` and `shop.example.com.` are refused as malformed in a mandate and never match.
+
+### 14.3 Principals without user data
+
+Protocols that move between an agent operator and many companies forbid user data in what the operator signs or relays. PAP's delegations name no user or company, and its User IDs are pairwise, opaque, and "MUST NOT contain or be derived from personal information, such as an email address, phone number, or name, even with a keyed hash". The profile gives two ways to name a principal without such data:
+
+- **Pairwise ids.** A signer (`signer` or an entry of `signers.of`) whose `id` starts with `pairwise:` is followed by 16 to 128 base64url characters and carries no `name` or `role` (otherwise `mandate_malformed`). It is an opaque id the checker's authority source knows, for example the PAP User ID the agent gave this company, under which the company enrolled the person's passkey. Nothing else changes: the authority contract (section 8) is asked about that id. A pairwise id must be random, never derived from personal data, in line with PAP.
+- **Salted commitment.** `principal_commitment` is `"sha256:" || hex(SHA-256(JCS({"id": <principal id>, "salt": <salt>})))`, with a salt of at least 16 random bytes (22 to 128 base64url characters). Whoever sees the mandate or its hash learns nothing about the principal. A checker that is given the opening `{id, salt}` in the context (`principal`) confirms it (`principal_confirmed`) or blocks (`principal_mismatch`); an opening given for a mandate without a commitment also blocks. Without an opening the commitment is not looked at. This is for checkers that need to link a mandate to their own customer record without the mandate saying who that is; the salt must stay with the principal and the checker, and is never derived from the id.
+
+What the checker sees: the full mandate (with pairwise ids, a commitment, and the company fields of section 4.1, which stay required), the context, and nothing about the principal beyond what its own records hold. What travels in a protocol's shared messages can be only the mandate hash and the operation approval (14.4), which carries the hash, the counterparty's domain, the operation and signatures by enrolled keys. A mandate that lists several counterparties tells each of them the others; a mandate meant to travel inside such a protocol should name one counterparty.
+
+### 14.4 Operation approvals
+
+An **operation approval** is the principal's signature over one revision of one operation a counterparty is about to perform, under one mandate:
+
+```json
+{
+  "v": "gleipnir/operation_approval/0.6",
+  "mandate_hash": "sha256:…",
+  "counterparty": "shop.example.com",
+  "operation_id": "exc_5Rt2",
+  "revision": "1791487200-k3Jd9Qx2mW8v",
+  "terms": {"order_id": "ord_7Hk2", "price_difference": {"amount": "70.00", "currency": "USD"}},
+  "expires_at": "2026-10-23T09:30:00.000Z",
+  "approved_at": "2026-10-23T09:10:00.000Z",
+  "agent_jkt": "aVBtapLd11SUVKIMGJfPzOEDuN0sXcmzJQNVT-_sKEU",
+  "sigs": [{"signer": {"id": "pairwise:Qm9iLWF0LXNob3AtZXhhbXBsZQ", "public_key": "ecdsa-p256:…"},
+            "sig": {"type": "webauthn", …}}]
+}
+```
+
+`operation_approval_hash` is `"sha256:" || hex(SHA-256(JCS(approval minus "sigs")))`, so the signed bytes are the RFC 8785 encoding of `{mandate_hash, counterparty, operation_id, revision, terms, expires_at, approved_at, agent_jkt?, v}`. Each signature is over `"gleipnir/operation_approval/v0.6\n" || operation_approval_hash`, as an Ed25519 or P-256 record signature or a passkey assertion whose WebAuthn challenge is the 32 raw bytes of `SHA-256` of that message. The domain prefix keeps such a signature from ever counting as a mandate, override or payee approval signature, and the reverse. `operation_id` and `revision` are what the counterparty returned (PAP: 1 to 256 characters of the URL-safe base64 alphabet), `terms` is its JSON terms when it gave any (an object), `expires_at` its expiry in strict UTC (a PAP `expires_at` with an offset is converted). The `summary` is not copied: the counterparty changes `revision` whenever the summary, terms or expiry change. `counterparty` is the domain the approval is for, so it cannot be replayed at another company. `agent_jkt` (optional) binds this one approval to the key the agent presents, such as today's PAP session key. Fields beyond these are `x` only (closed shape, section 13.1). One signature per person and per key, at most 16.
+
+The checker receives the mandate, the approval, the counterparty's own record of the operation (`{operation_id, revision, terms?, expires_at, summary?}`) and the context, and runs these steps in order; the first failure decides:
+
+| # | Check | Fails with | Outcome |
+|---|---|---|---|
+| 1 | Mandate parses | `mandate_malformed` | block |
+| 2 | The mandate is 0.6 and the approval parses | `operation_approval_invalid` | block |
+| 3 | The counterparty's operation parses | `operation_malformed` | block |
+| 4 | `mandate_hash` is this mandate's hash | `mandate_mismatch` | block |
+| 5 | Mandate signatures and delegation chain (sections 4.3, 5); every approval signature valid | `mandate_bad_signature` / `delegation_*` / `operation_approval_invalid` | block |
+| 6 | Agent key: every thumbprint the mandate names (`agent.jkt`, else the thumbprint of `agent.public_key`) and the approval names (`agent_jkt`) is the thumbprint of the context's `agent_jwk`. Nothing named: no binding | `agent_key_mismatch` | block |
+| 7 | A principal opening in the context matches `principal_commitment` (14.3) | `principal_mismatch` | block |
+| 8 | `counterparty` is the context's counterparty | `operation_mismatch` | block |
+| 9 | `counterparty` is on `scope.counterparties`, if the mandate has the list | `counterparty_not_on_mandate` | block |
+| 10 | Same `operation_id`, `revision`, `expires_at` (as an instant) and `terms` (JCS-equal, or absent on both) as the counterparty's operation | `operation_mismatch` | block |
+| 11 | `approved_at` not ahead of the checker's clock by more than `max_skew`, and not before the mandate's `issued_at` | `operation_approval_invalid` | block |
+| 12 | Idempotent retry: the log holds a decision for this operation and this exact approval hash: return it unchanged | (earlier decision) | |
+| 13 | Now is not after `expires_at` | `operation_approval_expired` | block |
+| 14 | The mandate's signers are authorized (steps 10 to 13 of section 7) | as in section 7 | |
+| 15 | The approval's signers are people the authority source says may sign, with enrolled keys (a key retired after `approved_at` still counts), each person once, as many as the mandate itself needed (its threshold and every signer's `joint`), as for payee approvals (section 7.2) | `operation_approval_invalid` | block |
+| 16 | Claim `JCS(["operation", counterparty, operation_id])` atomically in the payment log. Already claimed by any other approval, of any revision | `operation_replayed` | block |
+| 17 | Validity window, revocations and revocation lists, `status_url`, Token Status List (14.5), as in steps 15 to 17a of section 7, without waivers | as in section 7 | block / escalate |
+
+An `allow` holds the claim with its decision; every other outcome releases it, so the counterparty can return a new revision and the principal can approve that. A store answering anything but true or false is `checker_unavailable`, as in section 7. Replay protection is therefore per counterparty and operation, not per revision: PAP requires each operation to be performed at most once "however many times its approval is sent", and the same approval sent again gets the first decision (step 12), also after `expires_at`. The counterparty keeps the claim at least until `expires_at` (PAP section 7 asks the same) and can forget it afterwards: an expired approval is refused at step 13. Operations have no overrides; an `escalate` (`signer_unknown`, `status_unavailable`, `checker_unavailable`) is resolved by the counterparty fixing the dependency or asking again.
+
+The decision is `gleipnir/decision/0.6`, signed with the `v0.6` prefix, and names `"operation": {"id", "revision", "approval_hash"}` in place of `payment`; `signers` and `operation_approvers` ({id, public_key}) record whom the checker counted, and `checks` include `agent_key_bound`, `counterparty_on_mandate`, `operation_matches` and `operation_approved:<n>/<needed>`. Mandate + approval + decision form a receipt anyone can check offline: the decision is signed by a known checker key, names this mandate and this approval by hash, every mandate signature is valid, and everyone listed in `signers` and `operation_approvers` has a valid signature in what is presented (`verify_operation_receipt` / `verifyOperationReceipt`).
+
+The checker does not interpret `terms`. A mandate's amounts and payee rules apply to payments (section 7); an operation's terms are the counterparty's own JSON, so whether they fit the mandate's purpose is the counterparty's and the principal's call. What the profile adds is that the principal's own key signed exactly these terms.
+
+### 14.5 Revocation by Token Status List
+
+`status` names the mandate's entry in an IETF Token Status List (draft-ietf-oauth-status-list): `{"status_list": {"idx": <non-negative integer>, "uri": <https URL, ASCII, at most 2048 characters>}}`, the same claim the draft defines for a Referenced Token. It adds to `status_url` and revocations (section 9); a mandate may have any of them.
+
+The checker fetches the Status List Token at `uri` (JWT form, `Accept: application/statuslist+jwt`; the fetch rules of section 9.1 apply) and accepts it only if: the header `typ` is `statuslist+jwt`; `alg` is `EdDSA` with an Ed25519 key or `ES256` with a P-256 key, and the signature verifies with a key on the checker's list of trusted status list issuers (configured out of band, like officer keys; the token's own `kid` or `x5c` is never trusted); `sub` equals `uri`; `iat` and `exp` are integers, `iat` is no later than now plus a minute and no older than `status_list_max_age` (default one hour), now is before `exp`, and `exp` is at most 24 hours after `iat`; `status_list.bits` is 1, 2, 4 or 8 and `status_list.lst` is base64url ZLIB/DEFLATE data (RFC 1950, RFC 1951) of at most 16 MiB; and `idx` is inside the list. Entry `idx` is the `bits` bits starting at bit `idx × bits` of the byte array, least significant bit first.
+
+Step 17a of section 7 (and step 17 of 14.4): `0x00` VALID passes (`status_list_valid`); `0x01` INVALID is `mandate_revoked` and `0x02` SUSPENDED is `mandate_suspended` (both block). Anything else gives no statement about the mandate and is `status_unavailable` (escalate), exactly as for `status_url`: an unreachable list, a token that is stale, expired, unsigned, signed by an untrusted key, about another `uri`, malformed or too large, an index out of range, an application-specific or reserved value (`0x03`, `0x0C` to `0x0F`), or a checker with no fetcher configured. A bank officer's override of a payment's `status_unavailable` proceeds without it (`status_list_unavailable_approved`); an INVALID or SUSPENDED answer still blocks.
+
+Who runs the list is the mandate issuer's choice (a bank, a platform, the principal's agent operator); the checker decides whose lists it trusts. Unlike a signed status (section 9.1), a list entry does not carry a person's signature: its "valid" is worth what the checker's trust in the issuer is worth, and the issuer can also mark a mandate invalid. A list hides which mandate is checked from the list operator only as far as the list is large and fetched as a whole, and it can delay a revocation by up to `status_list_max_age`.
+
+### 14.6 Mapping to PAP (informative)
+
+The extension `getgleipnir.com/mandate`, version `"1"`, listed in the company's `poppy.json` and the agent's client metadata `extensions`, carries a principal-signed approval next to PAP's own: in a conversation, `extensions["getgleipnir.com/mandate"] = {"approval": {…}, "mandate"?: {…}}` alongside `extensions.operations.approval`; in an MCP tool call, the same object under `_meta["getgleipnir.com/mandate"]`; at an API, a `gleipnir` member of `Poppy-Approval` holding the approval as an RFC 9651 Byte Sequence of its JCS bytes (unknown members of that header are ignored by PAP companies). The mandate itself goes to the company once, by reference or registration, rather than in every header. The company maps PAP to the context: `counterparty` is its `organization.domain`, `agent_jwk` the verified Session JWT's delegated `cnf.jwk` (or the DPoP key), and the operation is the one it returned. A company whose `poppy.json` lists the extension can refuse an operation without a valid principal signature (`extension_required`), which turns PAP's trust-based approval into a verifiable one. This mapping is a proposal to the PAP authors, not part of PAP.
+
+## 15. Open questions for 1.0
 
 - Joint signing inside delegation links (two joint signatories delegating together).
 - vLEI credential presentation format inside `company.ids.vlei` and `signer` (ACDC / W3C VC), and how a checker resolves it to an `authority` answer.
 - Mappings for other pain.001 versions (.003, .012) and for pacs.008 between banks.
 - Card push payments (Visa Direct, Mastercard Move) and wallets: different networks, out of scope for bank transfers.
 - More domestic schemes (Brazil Pix, Singapore PayNow, Japan Zengin) as rails are added.
+- Agent protocol profile (section 14): whether operation approvals should also sign a hash of the `summary` text the principal saw; overrides for operation escalations; selective disclosure (SD-JWT) for counterparty lists so a mandate can name several companies without telling each the others; Status List Tokens in CWT form; how the PAP extension mapping (14.6) should carry the mandate itself.
 
 ## Appendix A. Reason codes
 
@@ -747,6 +895,15 @@ From 1.0:
 | `override_invalid` | escalate | 7.1 | The override does not name a valid escalation of this checker for this payment, or is late, early or badly signed. |
 | `override_not_authorized` | escalate | 7.1 | The override's signers may not resolve this escalation. |
 | `blocked_by_override` | block | 7.1 | A person refused this payment. Holds the id. |
+| `agent_key_mismatch` | block | 6a, 14.4 | The key the agent proved does not have the thumbprint the mandate or the operation approval names, or none was given. New in 0.6. |
+| `principal_mismatch` | block | 6a, 14.4 | The principal opening in the context does not match the mandate's commitment, or the mandate has none. New in 0.6. |
+| `counterparty_not_on_mandate` | block | 18a, 14.4 | The counterparty domain is not on `scope.counterparties` (exact match). New in 0.6. |
+| `mandate_suspended` | block | 17a | The mandate's Token Status List entry is SUSPENDED. New in 0.6. |
+| `operation_approval_invalid` | block | 14.4 | The operation approval is malformed, badly signed, for a mandate that is not 0.6, dated ahead or before the mandate, or not signed by enough people who may sign. New in 0.6. |
+| `operation_malformed` | block | 14.4 | The counterparty's own operation record is malformed. New in 0.6. |
+| `operation_mismatch` | block | 14.4 | The approval is for another counterparty, operation, revision, expiry or terms than the one being performed. New in 0.6. |
+| `operation_approval_expired` | block | 14.4 | Now is after the approval's `expires_at`. New in 0.6. |
+| `operation_replayed` | block | 14.4 | Another approval of this counterparty's operation was already allowed. New in 0.6. |
 
 ## Appendix B. Conformance
 
@@ -758,3 +915,4 @@ A conforming checker produces, for the same inputs and clock, the same `outcome`
 - It also pins, as data both implementations must reproduce exactly: problem messages for malformed objects, decisions checked against key sets, revocation lists (current, stale, untrusted, altered), and ISO 20022: the identical pain.001 XML for each account scheme, and the identical problems for altered and hostile messages.
 - Reference implementations: Python `gleipnir_verify.mandate` and `gleipnir_verify.iso20022`, TypeScript `@getgleipnir/verify/mandate`. Both run every vector and verify each other's decisions.
 - `PaymentLog` implementations provide `lookup`, `register`, `remember`, `forget` and the atomic `take` (section 7.1); `Ledger` implementations accept a `null` limit.
+- 0.6 vectors (section 14) are in a file of their own, `typescript/packages/verify/test/fixtures/mandate-vectors-06.json` (generated by the same script), so the 0.4 and 0.5 file stays byte for byte as it was. Payment cases (`v06_*`) may give, per step, the checker's context (`contexts`), what the status list fetcher answers per uri (`status_lists`) and the trusted issuer keys (`status_list_keys`): agent key thumbprints (right, wrong, missing, private, with extra members), counterparty domains, principal commitments and pairwise signers, Token Status List entries (valid in EdDSA and ES256, invalid, suspended, application-specific, out of range, unreachable, stale, expired, untrusted, about another list, living longer than 24 hours, junk, not wired, waived by an officer), payee approvals under a 0.6 mandate, and a 0.6 field in a 0.5 mandate. Operation cases (`operations`, `op_*`) give the mandate and, per step, the approval, the counterparty's operation, the context and the clock: allow then replays (same approval, new revision, after expiry), wrong agent key, approval bound to a session key, wrong counterparty, tampered and differing terms, expiry, revocation and suspension by status list, unknown status, signer unknown, outsiders, dating, passkey approvals, joint signing, pairwise principals, and malformed input. The file also pins problem messages for 0.6 objects, domains, RFC 7638 thumbprints (including RFC 8037 appendix A.3), status list answers and operation keys. `npm run interop` additionally has each implementation issue 0.6 objects that the other checks and receipts.

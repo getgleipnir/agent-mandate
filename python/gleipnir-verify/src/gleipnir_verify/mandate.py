@@ -20,10 +20,13 @@ Gleipnir does not verify identities: the bank or a vLEI issuer binds keys to peo
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import secrets
 import threading
 import unicodedata
+import zlib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -34,11 +37,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .approvals import webauthn_problem
 from .canon import canonicalize, hash_to_bytes, sha256_tagged
-from .crypto import b64u, decode_public_key, encode_public_key, verify_signature
+from .crypto import b64u, decode_public_key, encode_public_key, unb64u, verify_signature
 from .verifier import parse_time
 
 V = "0.4"   # objects 0.5 left unchanged: payments, overrides, delegations, statuses, revocation lists, key sets
 V5 = "0.5"  # mandates that use unlisted_payees, payee approvals, revocations of them, decisions about 0.5 mandates
+V6 = "0.6"  # the agent protocol profile (spec 15): mandates that use it, operation approvals, decisions about them
+V56 = (V5, V6)  # drafts with payee approvals and unlisted payees (0.6 is 0.5 plus the profile)
 
 # ---------- accounts and rails (spec section 6) ----------
 
@@ -190,8 +195,13 @@ def message(kind: str, h: str, v: str = V) -> bytes:
 
 
 def version_of(obj: Any, kind: str) -> str:
-    """The draft an object is in: "0.5" if its ``v`` says so, else "0.4" (the version every other check uses)."""
-    return V5 if isinstance(obj, dict) and obj.get("v") == f"gleipnir/{kind}/{V5}" else V
+    """The draft an object is in: "0.6" or "0.5" if its ``v`` says so, else "0.4" (the version every other check
+    uses)."""
+    if isinstance(obj, dict):
+        for ver in (V6, V5):
+            if obj.get("v") == f"gleipnir/{kind}/{ver}":
+                return ver
+    return V
 
 
 def payee_approval_hash(approval: dict[str, Any]) -> str:
@@ -256,14 +266,25 @@ def parse_amount(text: Any, currency: Any) -> Decimal:
 
 def issue(*, company: dict, agent: dict, scope: dict, valid_until: str, id: str, signer: dict | None = None,
           signers: dict | None = None, delegation: list[dict] | None = None, valid_from: str | None = None,
-          status_url: str | None = None, issued_at: str | None = None, version: str | None = None) -> dict[str, Any]:
+          status_url: str | None = None, issued_at: str | None = None, version: str | None = None,
+          extra: dict | None = None) -> dict[str, Any]:
     """An unsigned mandate: one ``signer`` (sign with sign_mandate) or ``signers`` {threshold, of} (cosign).
 
-    ``version``: "0.4" or "0.5"; by default 0.5 if the scope uses ``unlisted_payees`` or
-    ``max_per_unlisted_payee`` (spec 4.1), else 0.4, so a mandate a 0.4 checker can read stays 0.4.
+    ``version``: "0.4", "0.5" or "0.6"; by default 0.6 if the mandate uses the agent protocol profile (spec 15:
+    ``agent.jkt``, ``scope.counterparties``, ``status``, ``principal_commitment``, pairwise signer ids), else 0.5 if
+    the scope uses ``unlisted_payees`` or ``max_per_unlisted_payee`` (spec 4.1), else 0.4, so a mandate an older
+    checker can read keeps its older version. ``status`` and ``principal_commitment`` go in ``extra``.
     """
+    extra = extra or {}
     if version is None:
-        version = V5 if {"unlisted_payees", "max_per_unlisted_payee"} & set(scope) else V
+        people = [signer] if signer is not None else list((signers or {}).get("of", []))
+        if "jkt" in agent or "counterparties" in scope or set(extra) & {"status", "principal_commitment"} \
+                or any(str(p.get("id", "")).startswith(PAIRWISE) for p in people if isinstance(p, dict)):
+            version = V6
+        elif {"unlisted_payees", "max_per_unlisted_payee"} & set(scope):
+            version = V5
+        else:
+            version = V
     m: dict[str, Any] = {"v": f"gleipnir/mandate/{version}", "id": id, "company": company, "agent": agent,
                          "scope": scope, "valid_until": valid_until, "issued_at": issued_at or now()}
     if signer is not None:
@@ -276,6 +297,7 @@ def issue(*, company: dict, agent: dict, scope: dict, valid_until: str, id: str,
         m["valid_from"] = valid_from
     if status_url:
         m["status_url"] = status_url
+    m.update(extra)
     problem = mandate_problem(m)
     if problem:
         raise ValueError(problem)
@@ -335,7 +357,9 @@ def revoke(target: dict, *, signer: dict, sk: Ed25519PrivateKey, id: str, reason
     0.5 has), else 0.4. Checkers accept revocations of both drafts (spec 13.1).
     """
     kind = str(target.get("v", ""))
-    ver = V5 if kind.startswith("gleipnir/payee_approval/") or kind == f"gleipnir/mandate/{V5}" else V
+    # 0.6 has no revocation of its own: a 0.5 revocation names a 0.6 mandate by hash like any other.
+    ver = V5 if kind.startswith("gleipnir/payee_approval/") or kind in (f"gleipnir/mandate/{V5}",
+                                                                         f"gleipnir/mandate/{V6}") else V
     r: dict[str, Any] = {"v": f"gleipnir/revocation/{ver}", "id": id}
     if kind.startswith("gleipnir/delegation/"):
         r.update({"delegation": target["id"], "delegation_hash": delegation_hash(target)})
@@ -353,8 +377,8 @@ def approve_payee(mandate: dict, *, payee: dict, id: str, approved_at: str | Non
                   valid_until: str | None = None, reason: str = "") -> dict[str, Any]:
     """An unsigned payee approval (spec 7.2): this payee account counts as listed on this 0.5 mandate. The
     company's signatories add their signatures with sign_payee_approval, as many as the mandate itself needed."""
-    if version_of(mandate, "mandate") != V5:
-        raise ValueError("payee approvals need a 0.5 mandate")
+    if version_of(mandate, "mandate") not in V56:
+        raise ValueError("payee approvals need a 0.5 or 0.6 mandate")
     a: dict[str, Any] = {"v": f"gleipnir/payee_approval/{V5}", "id": id,
                          "mandate": {"id": mandate["id"], "hash": mandate_hash(mandate)},
                          "payee": {"name": payee.get("name", ""), "account": payee.get("account")},
@@ -541,6 +565,18 @@ SHAPES: dict[str, dict[str, Any]] = {
 SHAPES["scope@0.5"] = {**SHAPES["scope"], "unlisted_payees": _ANY, "max_per_unlisted_payee": _ANY}
 SHAPES["mandate@0.5"] = {**SHAPES["mandate"], "scope": _o("scope@0.5")}
 SHAPES["revocation@0.5"] = {**SHAPES["revocation"], "payee_approval": _ANY, "payee_approval_hash": _ANY}
+# 0.6, the agent protocol profile (spec 15): an agent key thumbprint, counterparty domains, a Token Status List
+# reference and a principal commitment. Every one is optional; a 0.6 mandate without them is checked like 0.5.
+SHAPES["agent@0.6"] = {**SHAPES["agent"], "jkt": _ANY}
+SHAPES["scope@0.6"] = {**SHAPES["scope@0.5"], "counterparties": _ANY}
+SHAPES["status_list_ref"] = {"idx": _ANY, "uri": _ANY}
+SHAPES["mandate_status"] = {"status_list": _o("status_list_ref")}
+SHAPES["mandate@0.6"] = {**SHAPES["mandate@0.5"], "agent": _o("agent@0.6"), "scope": _o("scope@0.6"),
+                         "status": _o("mandate_status"), "principal_commitment": _ANY}
+SHAPES["operation_approval"] = {"v": _ANY, "mandate_hash": _ANY, "counterparty": _ANY, "operation_id": _ANY,
+                                "revision": _ANY, "terms": _ANY, "expires_at": _ANY, "approved_at": _ANY,
+                                "agent_jkt": _ANY, "sigs": _l("osig"), "x": _X}
+SHAPES["operation"] = {"operation_id": _ANY, "revision": _ANY, "summary": _ANY, "terms": _ANY, "expires_at": _ANY}
 
 
 def _shape_problem(obj: Any, shape: str, path: str) -> str | None:
@@ -686,8 +722,9 @@ def _unlisted_problem(sc: dict) -> str | None:
 
 
 def mandate_problem(m: Any) -> str | None:
-    """Why this is not a well-formed mandate (0.4 or 0.5), or None."""
-    if not isinstance(m, dict) or m.get("v") not in (f"gleipnir/mandate/{V}", f"gleipnir/mandate/{V5}"):
+    """Why this is not a well-formed mandate (0.4, 0.5 or 0.6), or None."""
+    if not isinstance(m, dict) or m.get("v") not in (f"gleipnir/mandate/{V}", f"gleipnir/mandate/{V5}",
+                                                      f"gleipnir/mandate/{V6}"):
         return "unknown mandate version"
     bad = _str_fields(m, ("id", "company.name", "company.country", "agent.id", "scope.currency",
                           "scope.max_per_payment", "valid_until", "issued_at"))
@@ -695,8 +732,9 @@ def mandate_problem(m: Any) -> str | None:
         return bad
     if not _jcs_ok(m):
         return "mandate is not valid I-JSON"
-    v5 = version_of(m, "mandate") == V5
-    bad = _shape_problem(m, "mandate@0.5" if v5 else "mandate", "")
+    mv = version_of(m, "mandate")
+    v5 = mv in V56
+    bad = _shape_problem(m, {V: "mandate", V5: "mandate@0.5", V6: "mandate@0.6"}[mv], "")
     if bad:
         return bad
     if not _COUNTRY_RE.fullmatch(m["company"]["country"]):
@@ -720,7 +758,7 @@ def mandate_problem(m: Any) -> str | None:
             bad = delegation_problem(d)
             if bad:
                 return f"delegation: {bad}"
-    return None
+    return _profile_problem(m) if mv == V6 else None
 
 
 def delegation_problem(d: Any) -> str | None:
@@ -892,6 +930,374 @@ def _approvals_problem(approvals: Any) -> str | None:
     return None
 
 
+# ---------- 0.6: the agent protocol profile (spec 15) ----------
+# Optional fields that let a mandate travel inside agent protocols (for example the Personal Agent Protocol): the
+# agent bound by its key's JWK thumbprint, counterparties named by domain, principals named by a pairwise id or a
+# salted commitment, per-operation approvals signed by the principal, and an IETF Token Status List entry.
+
+PAIRWISE = "pairwise:"
+_PAIRWISE_RE = _D(r"pairwise:[A-Za-z0-9_-]{16,128}")
+_JKT_RE = _D(r"[A-Za-z0-9_-]{43}")
+_B64U_RE = _D(r"[A-Za-z0-9_-]*")
+_COMMITMENT_RE = _D(r"sha256:[0-9a-f]{64}")
+_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_DOMAIN_RE = _D(rf"(?:{_LABEL}\.)+{_LABEL}")
+_OP_ID_RE = _D(r"[A-Za-z0-9_-]{1,256}")  # PAP spec 8.2: 1 to 256 characters of the URL-safe base64 alphabet
+_SALT_RE = _D(r"[A-Za-z0-9_-]{22,128}")  # at least 16 random bytes
+MAX_COUNTERPARTIES = 64
+MAX_STATUS_LIST_BYTES = 1 << 24  # a decompressed status list larger than 16 MiB is refused
+MAX_STATUS_LIST_LIFETIME = timedelta(hours=24)
+STATUS_VALID, STATUS_INVALID, STATUS_SUSPENDED = 0, 1, 2
+
+
+def domain_problem(d: Any) -> str | None:
+    """Why this is not a counterparty domain in canonical form, or None: lowercase ASCII host name of at least two
+    labels (IDNs as A-labels), at most 253 characters, no trailing dot, port, scheme or wildcard, and not an IPv4
+    address. Domains are compared byte for byte, so producers normalize before signing (spec 15.2)."""
+    if not isinstance(d, str) or len(d) > 253 or not _DOMAIN_RE.fullmatch(d):
+        return f"not a canonical domain: {d!r}"
+    if d.rsplit(".", 1)[1].isdigit():
+        return f"not a canonical domain: {d!r}"
+    return None
+
+
+def _b64u_32(text: Any) -> bytes | None:
+    """32 bytes from canonical unpadded base64url text (43 characters), else None."""
+    if not isinstance(text, str) or len(text) != 43 or not _B64U_RE.fullmatch(text):
+        return None
+    raw = unb64u(text)
+    return raw if len(raw) == 32 and b64u(raw) == text else None
+
+
+_PRIVATE_JWK = ("d", "p", "q", "dp", "dq", "qi", "k", "oth")
+
+
+def jwk_problem(jwk: Any) -> str | None:
+    """Why this is not a public Ed25519 (OKP) or P-256 (EC) JWK, or None. Members other than the required ones
+    (``kid``, ``alg``, ``use``) are allowed and do not enter the thumbprint; private members are refused."""
+    if not isinstance(jwk, dict):
+        return "a JWK must be an object"
+    if any(k in jwk for k in _PRIVATE_JWK):
+        return "a JWK must not contain private key members"
+    if jwk.get("kty") == "OKP" and jwk.get("crv") == "Ed25519":
+        return None if _b64u_32(jwk.get("x")) is not None else "bad Ed25519 JWK x"
+    if jwk.get("kty") == "EC" and jwk.get("crv") == "P-256":
+        if _b64u_32(jwk.get("x")) is None or _b64u_32(jwk.get("y")) is None:
+            return "bad P-256 JWK x or y"
+        return None
+    return "only Ed25519 (OKP) and P-256 (EC) JWKs are supported"
+
+
+def jwk_thumbprint(jwk: dict) -> str:
+    """RFC 7638 JWK thumbprint (SHA-256, base64url): the hash of the required members in lexicographic order, which
+    for these key types is their JCS encoding. Raises ValueError for anything jwk_problem refuses."""
+    problem = jwk_problem(jwk)
+    if problem:
+        raise ValueError(problem)
+    members = ("crv", "kty", "x") if jwk["kty"] == "OKP" else ("crv", "kty", "x", "y")
+    return b64u(hashlib.sha256(canonicalize({k: jwk[k] for k in members})).digest())
+
+
+def public_key_jwk(public_key: str) -> dict[str, str]:
+    """A public key in this spec's format ("ed25519:..." or "ecdsa-p256:...") as a JWK."""
+    pub = decode_public_key(public_key)
+    if isinstance(pub, (bytes, bytearray)):
+        return {"kty": "OKP", "crv": "Ed25519", "x": b64u(bytes(pub))}
+    from cryptography.hazmat.primitives import serialization as ser
+    nums = ser.load_der_public_key(pub[1]).public_numbers()  # type: ignore[union-attr]
+    return {"kty": "EC", "crv": "P-256", "x": b64u(nums.x.to_bytes(32, "big")), "y": b64u(nums.y.to_bytes(32, "big"))}
+
+
+def principal_commitment(principal_id: str, salt: str) -> str:
+    """A salted commitment to a principal identifier (spec 15.3): sha256 over JCS {"id", "salt"}. ``salt`` is at
+    least 16 random bytes, base64url. A checker that is given the id and salt can confirm the commitment; anyone
+    who only sees the mandate or its hash learns nothing about the principal."""
+    if not isinstance(principal_id, str) or not principal_id or not isinstance(salt, str) \
+            or not _SALT_RE.fullmatch(salt):
+        raise ValueError("a principal commitment needs a non-empty id and a base64url salt of 22 to 128 characters")
+    return sha256_tagged(canonicalize({"id": principal_id, "salt": salt}))
+
+
+def _pairwise_problem(p: dict, what: str) -> str | None:
+    pid = p.get("id")
+    if isinstance(pid, str) and pid.startswith(PAIRWISE):
+        if not _PAIRWISE_RE.fullmatch(pid):
+            return f"{what}.id: a pairwise id is pairwise: and 16 to 128 base64url characters"
+        if "name" in p or "role" in p:
+            return f"{what}: a pairwise signer carries no name or role"
+    return None
+
+
+def _profile_problem(m: dict) -> str | None:
+    """0.6 rules for the agent protocol profile (spec 15.1)."""
+    agent = m["agent"]
+    if "jkt" in agent:
+        if not isinstance(agent["jkt"], str) or not _JKT_RE.fullmatch(agent["jkt"]) or _b64u_32(agent["jkt"]) is None:
+            return "agent.jkt must be a base64url SHA-256 JWK thumbprint"
+        if "public_key" in agent:
+            try:
+                same = jwk_thumbprint(public_key_jwk(agent["public_key"])) == agent["jkt"]
+            except Exception:  # noqa: BLE001
+                same = False
+            if not same:
+                return "agent.jkt is not the thumbprint of agent.public_key"
+    sc = m["scope"]
+    if "counterparties" in sc:
+        cps = sc["counterparties"]
+        if not isinstance(cps, list) or not 1 <= len(cps) <= MAX_COUNTERPARTIES:
+            return f"counterparties must be a list of 1 to {MAX_COUNTERPARTIES} domains"
+        for d in cps:
+            bad = domain_problem(d)
+            if bad:
+                return f"counterparties: {bad}"
+        if len(set(cps)) != len(cps):
+            return "counterparties lists a domain twice"
+    if "status" in m:
+        ref = m["status"].get("status_list") if isinstance(m["status"], dict) else None
+        if not isinstance(ref, dict) or set(ref) != {"idx", "uri"}:
+            return "status needs status_list {idx, uri}"
+        if type(ref["idx"]) is not int or ref["idx"] < 0:
+            return "status.status_list.idx must be a non-negative integer"
+        uri = ref["uri"]
+        if not isinstance(uri, str) or not uri.startswith("https://") or len(uri) > MAX_URL or not uri.isascii():
+            return "status.status_list.uri must be an https URL"
+    if "principal_commitment" in m and (not isinstance(m["principal_commitment"], str)
+                                        or not _COMMITMENT_RE.fullmatch(m["principal_commitment"])):
+        return "principal_commitment must be sha256: and 64 lowercase hex digits"
+    people = [("signer", m["signer"])] if "signer" in m else [("signers.of[]", p) for p in m["signers"]["of"]]
+    for what, p in people:
+        bad = _pairwise_problem(p, what)
+        if bad:
+            return bad
+    return None
+
+
+def operation_approval_hash(approval: dict[str, Any]) -> str:
+    """The hash every operation approval signature covers: the approval minus ``sigs`` (spec 15.4)."""
+    return obj_hash(approval, "sigs")
+
+
+def operation_problem(op: Any) -> str | None:
+    """Why this is not an operation as the counterparty describes it (spec 15.4), or None: ``operation_id`` and
+    ``revision`` (PAP ID characters), optional ``terms`` (an object), ``expires_at`` (strict UTC), and an optional
+    ``summary`` the checker does not read."""
+    if not isinstance(op, dict):
+        return "an operation must be an object"
+    if not _jcs_ok(op):
+        return "operation is not valid I-JSON"
+    bad = _shape_problem(op, "operation", "")
+    if bad:
+        return bad
+    for k in ("operation_id", "revision"):
+        if not isinstance(op.get(k), str) or not _OP_ID_RE.fullmatch(op[k]):
+            return f"{k} must be 1 to 256 base64url characters"
+    if "terms" in op and not isinstance(op["terms"], dict):
+        return "terms must be an object"
+    if "summary" in op and not isinstance(op["summary"], str):
+        return "summary must be a string"
+    try:
+        _ts(op.get("expires_at"))
+    except ValueError as e:
+        return str(e)
+    return None
+
+
+def operation_approval_problem(a: Any) -> str | None:
+    """Why this is not a well-formed operation approval (0.6, spec 15.4), or None."""
+    if not isinstance(a, dict) or a.get("v") != f"gleipnir/operation_approval/{V6}":
+        return "unknown operation approval version"
+    bad = _str_fields(a, ("mandate_hash", "counterparty", "operation_id", "revision", "expires_at", "approved_at"))
+    if bad or not _jcs_ok(a):
+        return bad or "operation approval is not valid I-JSON"
+    bad = _shape_problem(a, "operation_approval", "")
+    if bad:
+        return bad
+    if not _COMMITMENT_RE.fullmatch(a["mandate_hash"]):
+        return "mandate_hash must be sha256: and 64 lowercase hex digits"
+    bad = domain_problem(a["counterparty"])
+    if bad:
+        return f"counterparty: {bad}"
+    bad = operation_problem({k: a[k] for k in ("operation_id", "revision", "terms", "expires_at") if k in a})
+    if bad:
+        return bad
+    if "agent_jkt" in a and _b64u_32(a["agent_jkt"]) is None:
+        return "agent_jkt must be a base64url SHA-256 JWK thumbprint"
+    bad = _osigs_problem(a.get("sigs"), "an operation approval")
+    if bad:
+        return bad
+    try:
+        if _ts(a["expires_at"]) < _ts(a["approved_at"]):
+            return "expires_at is before approved_at"
+    except ValueError as e:
+        return str(e)
+    return None
+
+
+def approve_operation(mandate: dict, *, counterparty: str, operation: dict, approved_at: str | None = None,
+                      agent_jkt: str | None = None) -> dict[str, Any]:
+    """An unsigned operation approval (spec 15.4): the principal approves one revision of one operation of one
+    counterparty, under this 0.6 mandate. ``operation`` is what the counterparty returned (operation_id, revision,
+    terms?, expires_at in UTC); its summary is not copied, since the revision names it. ``agent_jkt`` optionally
+    binds the approval to the agent key presenting it. Sign with sign_operation_approval."""
+    if version_of(mandate, "mandate") != V6:
+        raise ValueError("operation approvals need a 0.6 mandate")
+    a: dict[str, Any] = {"v": f"gleipnir/operation_approval/{V6}", "mandate_hash": mandate_hash(mandate),
+                         "counterparty": counterparty, "operation_id": operation.get("operation_id"),
+                         "revision": operation.get("revision"), "expires_at": operation.get("expires_at"),
+                         "approved_at": approved_at or now(), "sigs": []}
+    if "terms" in operation:
+        a["terms"] = operation["terms"]
+    if agent_jkt is not None:
+        a["agent_jkt"] = agent_jkt
+    problem = operation_approval_problem({**a, "sigs": [{"signer": {"id": "x", "public_key": "x"}, "sig": "x"}]})
+    if problem:
+        raise ValueError(problem)
+    return a
+
+
+def sign_operation_approval(approval: dict, sk: Ed25519PrivateKey, signer: dict) -> dict[str, Any]:
+    """Add (or replace) one signature on an operation approval. ``signer``: {id, public_key} of the person."""
+    entry = {"signer": signer, "sig": _sig_text(sk, "operation_approval", operation_approval_hash(approval), V6)}
+    sigs = [s for s in approval.get("sigs", []) if _get(s, "signer.id") != signer["id"]] + [entry]
+    return {**approval, "sigs": sigs}
+
+
+def operation_approval_digest(approval: dict) -> str:
+    """What a passkey signs for an operation approval (the WebAuthn challenge is its 32 raw bytes)."""
+    return sha256_tagged(message("operation_approval", operation_approval_hash(approval), V6))
+
+
+def operation_key(counterparty: str, operation_id: str) -> str:
+    """The log key that makes an operation single-use: JCS of ["operation", counterparty, operation_id]. Any second
+    approval of the same operation, whatever its revision, is a replay (spec 15.4)."""
+    return canonicalize(["operation", counterparty, operation_id]).decode()
+
+
+# ---- Token Status List (draft-ietf-oauth-status-list) ----
+
+def _strict_json(raw: bytes) -> Any:
+    def pairs(items: list[tuple[str, Any]]) -> dict:
+        out: dict = {}
+        for k, v in items:
+            if k in out:
+                raise ValueError(f"duplicate JSON key {k!r}")
+            out[k] = v
+        return out
+
+    def no_float(text: str) -> Any:
+        raise ValueError(f"number {text} is not an I-JSON integer")
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs, parse_float=no_float,
+                       parse_constant=no_float)
+    if not _numbers_ok(value):
+        raise ValueError("number is not an I-JSON integer")
+    return value
+
+
+def _b64u_strict(text: str) -> bytes:
+    if not _B64U_RE.fullmatch(text) or len(text) % 4 == 1:
+        raise ValueError("bad base64url")
+    raw = unb64u(text)
+    if b64u(raw) != text:
+        raise ValueError("bad base64url")
+    return raw
+
+
+def status_list_status(token: Any, uri: str, idx: int, issuer_keys: Iterable[str], at: datetime,
+                       max_age: timedelta = timedelta(hours=1)) -> int:
+    """The status of entry ``idx`` in a Status List Token (JWT form, draft-ietf-oauth-status-list) from ``uri``,
+    signed by one of ``issuer_keys`` (keys in this spec's format, trusted out of band), else ValueError.
+
+    The token is accepted only if: ``typ`` is ``statuslist+jwt``; ``alg`` is EdDSA (Ed25519 key) or ES256 (P-256
+    key) and the signature verifies with a trusted key; ``sub`` equals ``uri``; ``iat`` is no later than ``at``
+    plus a minute and no older than ``max_age``; ``exp`` is present, after ``at``, and at most 24 hours after
+    ``iat``; ``bits`` is 1, 2, 4 or 8; ``lst`` is base64url ZLIB/DEFLATE data of at most 16 MiB; ``idx`` is in
+    range. Anything else gives no statement about the mandate, which the checker treats as "could not confirm".
+    """
+    if not isinstance(token, str) or token.count(".") != 2 or not token.isascii():
+        raise ValueError("not a compact JWT")
+    h64, p64, s64 = token.split(".")
+    header, payload, sig = _strict_json(_b64u_strict(h64)), _strict_json(_b64u_strict(p64)), _b64u_strict(s64)
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        raise ValueError("JWT header and payload must be objects")
+    if header.get("typ") != "statuslist+jwt":
+        raise ValueError("typ must be statuslist+jwt")
+    alg = header.get("alg")
+    signing_input = f"{h64}.{p64}".encode("ascii")
+    ok = False
+    for text in issuer_keys:
+        try:
+            pub = decode_public_key(text)
+        except ValueError:
+            continue
+        if alg == "EdDSA" and isinstance(pub, (bytes, bytearray)) and len(sig) == 64:
+            ok = verify_signature(pub, signing_input, "ed25519:" + b64u(sig))
+        elif alg == "ES256" and not isinstance(pub, (bytes, bytearray)) and len(sig) == 64:
+            der = _der_ecdsa(int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big"))
+            ok = der is not None and verify_signature(pub, signing_input, "ecdsa-p256:" + b64u(der))
+        if ok:
+            break
+    if not ok:
+        raise ValueError("status list token is not signed by a trusted key")
+    if payload.get("sub") != uri:
+        raise ValueError("status list token sub is not the mandate's uri")
+    iat, exp = payload.get("iat"), payload.get("exp")
+    if type(iat) is not int or type(exp) is not int:
+        raise ValueError("status list token needs integer iat and exp")
+    t = int(at.timestamp())
+    if iat > t + 60 or t - iat > max_age.total_seconds() or t >= exp \
+            or exp - iat > MAX_STATUS_LIST_LIFETIME.total_seconds():
+        raise ValueError("status list token is not current")
+    sl = payload.get("status_list")
+    if not isinstance(sl, dict) or sl.get("bits") not in (1, 2, 4, 8) or type(sl.get("bits")) is not int \
+            or not isinstance(sl.get("lst"), str):
+        raise ValueError("bad status_list")
+    d = zlib.decompressobj()
+    data = d.decompress(_b64u_strict(sl["lst"]), MAX_STATUS_LIST_BYTES + 1)
+    if len(data) > MAX_STATUS_LIST_BYTES or not d.eof or d.unused_data:
+        raise ValueError("bad status list data")
+    bits = sl["bits"]
+    pos = idx * bits
+    if type(idx) is not int or idx < 0 or pos // 8 >= len(data):
+        raise ValueError("index out of range")
+    return (data[pos // 8] >> (pos % 8)) & ((1 << bits) - 1)
+
+
+def _der_ecdsa(r: int, s: int) -> bytes | None:
+    """DER ECDSA-Sig-Value for a raw (r, s), or None for a zero component."""
+    if r <= 0 or s <= 0:
+        return None
+
+    def integer(n: int) -> bytes:
+        b = n.to_bytes((n.bit_length() + 8) // 8, "big")  # a leading zero byte when the top bit is set
+        return b"\x02" + bytes([len(b)]) + b
+    body = integer(r) + integer(s)
+    return b"\x30" + bytes([len(body)]) + body
+
+
+def status_list_token(entries: list[int], *, uri: str, bits: int, sk: Any, iat: int, exp: int,
+                      alg: str = "EdDSA") -> str:
+    """A Status List Token (JWT) for tests and demos: ``entries`` packed ``bits`` per index, least significant bit
+    first, ZLIB-compressed. ``sk``: an Ed25519 private key (EdDSA) or a P-256 private key (ES256)."""
+    data = bytearray((len(entries) * bits + 7) // 8)
+    for i, v in enumerate(entries):
+        pos = i * bits
+        data[pos // 8] |= (v & ((1 << bits) - 1)) << (pos % 8)
+    payload = {"sub": uri, "iat": iat, "exp": exp, "status_list": {"bits": bits, "lst": b64u(zlib.compress(
+        bytes(data), 9))}}
+    h = b64u(canonicalize({"alg": alg, "typ": "statuslist+jwt"}))
+    p = b64u(canonicalize(payload))
+    msg = f"{h}.{p}".encode("ascii")
+    if alg == "EdDSA":
+        sig = sk.sign(msg)
+    else:
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+        r, s = decode_dss_signature(sk.sign(msg, ec.ECDSA(hashes.SHA256(), deterministic_signing=True)))
+        sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+    return f"{h}.{p}.{b64u(sig)}"
+
+
 # ---------- payee names (spec 7, step 21) ----------
 # Look-alike letters from other scripts (lowercase, or the lowercase of a capital look-alike such as Cyrillic
 # В -> в -> b), and digits that pass for letters, mapped to the Latin letter they imitate. Applied to both
@@ -928,11 +1334,12 @@ def _signatures(m: dict) -> tuple[list[tuple[dict, Any]], int]:
 
 def _verify(kind: str, h: str, sig: Any, pub_text: Any, webauthn: dict, v: str = V) -> bool:
     """A signature over message(kind, h, v). Passkey (WebAuthn) signatures are accepted for what people sign in
-    the bank's app: mandates, overrides and payee approvals."""
+    the bank's app: mandates, overrides, payee approvals and operation approvals."""
     try:
         pub = decode_public_key(pub_text)
         if isinstance(sig, dict) and sig.get("type") == "webauthn" and kind in ("mandate", "override",
-                                                                                  "payee_approval"):
+                                                                                  "payee_approval",
+                                                                                  "operation_approval"):
             return webauthn_problem(sig, pub, sha256_tagged(message(kind, h, v)), webauthn.get("rp_id", ""),
                                     webauthn.get("origins", []), None) is None
         return verify_signature(pub, message(kind, h, v), sig)
@@ -1171,6 +1578,86 @@ def _persons(v: Any) -> list[tuple[str, str]] | None:
     return [_pkey(x) for x in v]
 
 
+def _ctx(context: Any) -> dict:
+    return context if isinstance(context, dict) else {}
+
+
+def _thumbprint_of(jwk: Any) -> str | None:
+    try:
+        return jwk_thumbprint(jwk)
+    except Exception:  # noqa: BLE001 - any malformed key matches nothing
+        return None
+
+
+def _principal_ok(m: dict, principal: Any) -> bool:
+    if not isinstance(principal, dict) or "principal_commitment" not in m:
+        return False
+    try:
+        return principal_commitment(principal.get("id"), principal.get("salt")) == m["principal_commitment"]
+    except ValueError:
+        return False
+
+
+def _bound(m: dict, context: Any) -> str | None:
+    """Step 6a (0.6, spec 15.1 and 15.3): a mandate that names its agent only by ``agent.jkt`` needs the key the
+    checker saw the agent prove, with that thumbprint; a principal opening given in the context must match the
+    mandate's commitment. A mandate with ``agent.public_key`` binds its agent by the payment signature (step 6)."""
+    ctx = _ctx(context)
+    agent = m["agent"]
+    if "jkt" in agent and "public_key" not in agent and _thumbprint_of(ctx.get("agent_jwk")) != agent["jkt"]:
+        return "agent_key_mismatch"
+    if "principal" in ctx and not _principal_ok(m, ctx["principal"]):
+        return "principal_mismatch"
+    return None
+
+
+def _bound_checks(m: dict, context: Any) -> list[str]:
+    out = ["agent_key_bound"] if "jkt" in m["agent"] and "public_key" not in m["agent"] else []
+    return out + (["principal_confirmed"] if "principal" in _ctx(context) else [])
+
+
+def _counterparty(sc: dict, context: Any, checks: list[str]) -> str | None:
+    """Step 18a (spec 15.2): the counterparty the checker's own systems name is on the mandate, exactly."""
+    cp = _ctx(context).get("counterparty")
+    if not isinstance(cp, str) or cp not in sc["counterparties"]:
+        return "counterparty_not_on_mandate"
+    checks.append("counterparty_on_mandate")
+    return None
+
+
+def _same_operation(a: dict, op: dict) -> bool:
+    """The approval names exactly the operation the counterparty is about to perform: same id, revision, expiry
+    (as an instant) and terms (JCS-equal, or absent on both)."""
+    if a["operation_id"] != op["operation_id"] or a["revision"] != op["revision"]:
+        return False
+    if ("terms" in a) != ("terms" in op) or ("terms" in a and canonicalize(a["terms"]) != canonicalize(op["terms"])):
+        return False
+    return _ts(a["expires_at"]) == _ts(op["expires_at"])
+
+
+def _op_agent(m: dict, a: dict, ctx: dict) -> tuple[str | None, bool]:
+    """The agent key binding of an operation (spec 15.4, step 6): every thumbprint the mandate or the approval names
+    (``agent.jkt``, else the thumbprint of ``agent.public_key``; and ``agent_jkt``) must be the thumbprint of the
+    key the checker saw the agent prove. Returns (reason or None, whether anything was bound)."""
+    agent = m["agent"]
+    wanted = set()
+    if "jkt" in agent:
+        wanted.add(agent["jkt"])
+    elif "public_key" in agent:
+        try:
+            wanted.add(jwk_thumbprint(public_key_jwk(agent["public_key"])))
+        except Exception:  # noqa: BLE001 - a key that cannot be read binds to nothing
+            wanted.add("")
+    if "agent_jkt" in a:
+        wanted.add(a["agent_jkt"])
+    if not wanted:
+        return None, False
+    presented = _thumbprint_of(ctx.get("agent_jwk"))
+    if presented is None or wanted != {presented}:
+        return "agent_key_mismatch", True
+    return None, True
+
+
 # ---------- checking ----------
 
 @dataclass
@@ -1196,6 +1683,11 @@ class Checker:
     officers: Iterable[str] = ()  # public keys of bank staff who may sign overrides
     require_payees: bool = False  # policy: block mandates without a payee list (payees_required)
     webauthn: dict = field(default_factory=dict)  # {"rp_id": ..., "origins": [...]}
+    # status_list(uri) -> the Status List Token (compact JWT) at that uri; raises when unreachable (spec 15.5).
+    status_list: Callable[[str], Any] | None = None
+    # Public keys (this spec's format) of the status list issuers this checker trusts, obtained out of band.
+    status_list_keys: Iterable[str] = ()
+    status_list_max_age: timedelta = timedelta(hours=1)
 
     @property
     def public_key(self) -> str:
@@ -1229,17 +1721,23 @@ class Checker:
             raise _Stop("signer_not_authorized")
         return res
 
-    def check(self, mandate: Any, payment: Any, payee_approvals: Any = None) -> dict[str, Any]:
+    def check(self, mandate: Any, payment: Any, payee_approvals: Any = None,
+              context: Any = None) -> dict[str, Any]:
         """Check one payment against one mandate. Never raises on input; always returns a signed decision.
 
-        ``payee_approvals``: signed payee approvals that travel with the payment (spec 7.2), used for 0.5
+        ``payee_approvals``: signed payee approvals that travel with the payment (spec 7.2), used for 0.5 and 0.6
         mandates only; a 0.4 mandate is checked exactly as in 0.4.
+
+        ``context`` (0.6 mandates, spec 15): what the checker's own systems established about this request, never
+        what the agent claims: ``agent_jwk`` (the public JWK of the key the agent proved possession of, such as a
+        PAP Session JWT key or a DPoP key), ``counterparty`` (the domain the agent is acting towards) and
+        ``principal`` ({id, salt}, to confirm a principal commitment). Ignored for 0.4 and 0.5 mandates.
         """
         return self._checked(mandate, payment, lambda p_hash, at, checks, state: self._run(
-            mandate, payment, p_hash, at, checks, state, approvals=payee_approvals))
+            mandate, payment, p_hash, at, checks, state, approvals=payee_approvals, context=context))
 
     def resolve(self, mandate: Any, payment: Any, decision: Any, override: Any,
-                payee_approvals: Any = None) -> dict[str, Any]:
+                payee_approvals: Any = None, context: Any = None) -> dict[str, Any]:
         """Apply a signed override to one of this checker's escalate decisions (spec 7.1). Never raises on input.
 
         Returns the final decision (allow or block, signed, naming the escalation and the override), a later
@@ -1247,7 +1745,7 @@ class Checker:
         when the override does not count.
         """
         return self._checked(mandate, payment, lambda p_hash, at, checks, state: self._resolve(
-            mandate, payment, decision, override, p_hash, at, checks, state, payee_approvals),
+            mandate, payment, decision, override, p_hash, at, checks, state, payee_approvals, context),
             resolving=(decision, override))
 
     def _checked(self, mandate: Any, payment: Any, run: Callable, resolving: tuple | None = None) -> dict[str, Any]:
@@ -1377,14 +1875,15 @@ class Checker:
         state["signers"] = [{"id": m["signer"]["id"], "public_key": m["signer"]["public_key"]}]
         return None
 
-    def _authentic(self, m: Any, p: Any, p_hash: str | None, approvals: Any = None) -> str | None:
+    def _authentic(self, m: Any, p: Any, p_hash: str | None, approvals: Any = None,
+                   context: Any = None) -> str | None:
         """Steps 1-6: parse, then every signature on the objects themselves. No external system is asked."""
         if mandate_problem(m):
             return "mandate_malformed"
         if p_hash is None or payment_problem(p):
             return "payment_malformed"
         mv = version_of(m, "mandate")
-        if mv == V5 and approvals is not None and _approvals_problem(approvals):
+        if mv in V56 and approvals is not None and _approvals_problem(approvals):
             return "payee_approval_invalid"  # step 2: every payee approval presented is well formed
         mh = mandate_hash(m)
         if p["mandate"]["hash"] != mh:
@@ -1400,14 +1899,14 @@ class Checker:
         if "public_key" in m["agent"] and \
                 not _verify("payment", p_hash, p.get("agent_sig"), m["agent"]["public_key"], self.webauthn):
             return "agent_bad_signature"
-        return None
+        return _bound(m, context) if mv == V6 else None
 
     def _run(self, m: Any, p: Any, p_hash: str | None, at: datetime, checks: list[str],
              state: dict[str, Any], waive: frozenset[str] = frozenset(), claimed: bool | None = None,
-             vouched: frozenset = frozenset(), approvals: Any = None) -> str | dict | None:
+             vouched: frozenset = frozenset(), approvals: Any = None, context: Any = None) -> str | dict | None:
         """The check (spec 7). ``claimed`` is set when resolving an override: True if this payment already holds
         its id, False if it must claim it; then the lookup and the clock-skew step are skipped."""
-        bad = self._authentic(m, p, p_hash, approvals)
+        bad = self._authentic(m, p, p_hash, approvals, context)
         if bad:
             return bad
         mh = mandate_hash(m)
@@ -1431,6 +1930,9 @@ class Checker:
         checks.append("mandate_valid")
         if "public_key" in m["agent"]:
             checks.append("agent_signed")
+        v6 = version_of(m, "mandate") == V6
+        if v6:
+            checks.extend(_bound_checks(m, context))
         checks.append("account_held")
         sigs, threshold = _signatures(m)
         if chain:
@@ -1483,9 +1985,16 @@ class Checker:
                 checks.append("status_unavailable_approved")  # a bank officer confirmed it another way
             else:
                 return "status_unavailable"
+        bad = self._listed_status(m, at, checks, waive)
+        if bad:
+            return bad
         checks.append("not_revoked")
         sc = m["scope"]
         fa = p["from_account"]
+        if v6 and "counterparties" in sc:  # step 18a (spec 15.2): exact match, no wildcards
+            bad = _counterparty(sc, context, checks)
+            if bad:
+                return bad
         if "rails" in sc and p["rail"] not in sc["rails"]:
             return "rail_not_allowed"
         if not rail_fits(p["rail"], p["currency"], [fa, p["payee"]["account"]]):
@@ -1493,7 +2002,7 @@ class Checker:
         if p["currency"] != sc["currency"]:
             return "currency_mismatch"
         amt = parse_amount(p["amount"], p["currency"])
-        if version_of(m, "mandate") == V5:
+        if version_of(m, "mandate") in V56:
             bad = self._payee(m, mh, chain, sigs, p, amt, at, checks, state, waive, approvals or [], known)
             if bad:
                 return bad
@@ -1706,7 +2215,7 @@ class Checker:
                 parties = link_parties[r["delegation_hash"]]
             elif "payee_approval_hash" in r:
                 a = payee_approval
-                if version_of(mandate, "mandate") != V5 or payee_approval_problem(a) \
+                if version_of(mandate, "mandate") not in V56 or payee_approval_problem(a) \
                         or a["mandate"] != {"id": mandate["id"], "hash": mandate_hash(mandate)} \
                         or r["payee_approval_hash"] != payee_approval_hash(a):
                     return False
@@ -1766,9 +2275,199 @@ class Checker:
             return None
         return s["status"]
 
+    def _listed_status(self, m: dict, at: datetime, checks: list[str], waive: frozenset[str]) -> str | None:
+        """Step 17a (0.6, spec 15.5): the mandate's entry in its Token Status List. VALID passes, INVALID is
+        ``mandate_revoked`` and SUSPENDED ``mandate_suspended`` (both block); anything else, including no fetcher,
+        no answer, a stale, unsigned or untrusted token, an index out of range or an application-specific value,
+        could not be confirmed: ``status_unavailable`` (escalate), as for status_url."""
+        if version_of(m, "mandate") != V6 or "status" not in m:
+            return None
+        ref = m["status"]["status_list"]
+        st = None
+        if self.status_list is not None:
+            try:
+                st = status_list_status(self.status_list(ref["uri"]), ref["uri"], ref["idx"],
+                                        list(self.status_list_keys), at, self.status_list_max_age)
+            except Exception:  # noqa: BLE001 - no statement about the mandate
+                st = None
+        if st == STATUS_INVALID:
+            return "mandate_revoked"
+        if st == STATUS_SUSPENDED:
+            return "mandate_suspended"
+        if st == STATUS_VALID:
+            checks.append("status_list_valid")
+        elif "status_unavailable" in waive:
+            checks.append("status_list_unavailable_approved")
+        else:
+            return "status_unavailable"
+        return None
+
+    def check_operation(self, mandate: Any, approval: Any, operation: Any, context: Any = None) -> dict[str, Any]:
+        """Check a principal-signed approval of one operation under a 0.6 mandate (spec 15.4). Never raises on input;
+        always returns a signed ``gleipnir/decision/0.6`` that names the operation instead of a payment.
+
+        ``operation`` is the counterparty's own record of what it is about to perform ({operation_id, revision,
+        terms?, expires_at}, the PAP operation with ``expires_at`` in UTC). ``context``: ``counterparty`` (the
+        checker's own domain, required), ``agent_jwk`` (the key the agent proved, for example the PAP Session
+        JWT's ``cnf.jwk``), ``principal`` ({id, salt}). The payment log makes each (counterparty, operation_id)
+        single-use: the same approval again gets the same decision, any other approval of that operation is
+        ``operation_replayed``. Keep entries at least until the approval's ``expires_at``.
+        """
+        at = self.clock()
+        checks: list[str] = []
+        state: dict[str, Any] = {}
+        try:
+            reason = self._operation(mandate, approval, operation, context, at, checks, state)
+        except _Stop as s:
+            reason = s.reason
+        except Exception:  # noqa: BLE001 - last line of defence: unexpected input never allows
+            reason = "operation_approval_invalid"
+        if isinstance(reason, dict):  # the same approval again: the decision already made, unchanged
+            return reason
+        d = self._operation_decision(mandate, approval, operation, reason, checks, at, state)
+        if state.get("registered"):
+            try:
+                if d["outcome"] == "allow":
+                    self.payments.remember(state["key"], d)
+                else:
+                    self.payments.forget(state["key"])
+            except Exception:  # noqa: BLE001 - the decision still stands; the log is the checker's to fix
+                pass
+        return d
+
+    def _operation_decision(self, m: Any, a: Any, op: Any, reason: str | None, checks: list[str], at: datetime,
+                            state: dict) -> dict[str, Any]:
+        outcome = "allow" if reason is None else "escalate" if reason in ESCALATE else "block"
+        mid = m.get("id") if isinstance(m, dict) and isinstance(m.get("id"), str) else None
+        mh = mandate_hash(m) if isinstance(m, dict) and _jcs_ok(m) else None
+        ah = operation_approval_hash(a) if isinstance(a, dict) and _jcs_ok(a) else None
+
+        def text(k: str) -> str | None:
+            return op[k] if isinstance(op, dict) and isinstance(op.get(k), str) else None
+        d: dict[str, Any] = {"v": f"gleipnir/decision/{V6}", "id": "d_" + secrets.token_hex(12),
+                             "operation": {"id": text("operation_id"), "revision": text("revision"),
+                                           "approval_hash": ah},
+                             "mandate": {"id": mid, "hash": mh}, "outcome": outcome,
+                             "reasons": [reason] if reason else [], "checks": checks, "checked_at": fmt_ts(at),
+                             "checker": {"id": self.id, "public_key": self.public_key}}
+        if "signers" in state:
+            d["signers"] = state["signers"]
+        if reason == "signer_unknown" and state.get("unknown"):
+            d["unknown"] = [{"id": i, "public_key": k} for i, k in state["unknown"]]
+        if "approvers" in state:
+            d["operation_approvers"] = state["approvers"]
+        return _sign(self.sk, "decision", d, v=V6)
+
+    def _operation(self, m: Any, a: Any, op: Any, context: Any, at: datetime, checks: list[str],
+                   state: dict) -> str | dict | None:
+        """Spec 15.4, in order; the first failure decides."""
+        if mandate_problem(m):
+            return "mandate_malformed"
+        if version_of(m, "mandate") != V6 or operation_approval_problem(a):
+            return "operation_approval_invalid"
+        if operation_problem(op):
+            return "operation_malformed"
+        ctx = _ctx(context)
+        mh = mandate_hash(m)
+        if a["mandate_hash"] != mh:
+            return "mandate_mismatch"
+        sigs, threshold = _signatures(m)
+        if not sigs or not all(_verify("mandate", mh, sig, s["public_key"], self.webauthn, V6) for s, sig in sigs):
+            return "mandate_bad_signature"
+        chain = m.get("delegation", [])
+        if chain:
+            bad = _chain_problem(m, chain, self.webauthn)
+            if bad:
+                return bad
+        ah = operation_approval_hash(a)
+        if not all(_verify("operation_approval", ah, s["sig"], s["signer"]["public_key"], self.webauthn, V6)
+                   for s in a["sigs"]):
+            return "operation_approval_invalid"
+        bad, agent_bound = _op_agent(m, a, ctx)
+        if bad:
+            return bad
+        if "principal" in ctx and not _principal_ok(m, ctx["principal"]):
+            return "principal_mismatch"
+        sc = m["scope"]
+        if a["counterparty"] != ctx.get("counterparty"):
+            return "operation_mismatch"  # approved for another counterparty
+        if "counterparties" in sc and a["counterparty"] not in sc["counterparties"]:
+            return "counterparty_not_on_mandate"
+        if not _same_operation(a, op):
+            return "operation_mismatch"
+        approved = _ts(a["approved_at"])
+        if approved > at + self.max_skew or approved < _ts(m["issued_at"]):
+            return "operation_approval_invalid"
+        key = operation_key(a["counterparty"], a["operation_id"])
+        state["key"] = key
+        try:
+            prior = self.payments.lookup(key, ah)
+        except Exception:  # noqa: BLE001
+            return "checker_unavailable"
+        if isinstance(prior, dict):
+            return prior  # the same approval again: performed at most once
+        if at > _ts(a["expires_at"]):
+            return "operation_approval_expired"
+        checks.append("mandate_valid")
+        if agent_bound:
+            checks.append("agent_key_bound")
+        if "principal" in ctx:
+            checks.append("principal_confirmed")
+        if "counterparties" in sc:
+            checks.append("counterparty_on_mandate")
+        checks.append("operation_matches")
+        if chain:
+            bad = self._chain_ok(m, chain, checks, frozenset(), state)
+            if bad:
+                return bad
+        else:
+            self._signers_ok(m, sigs, threshold, checks, frozenset(), state)
+        approvers, needed = self._company_signers(m, a["sigs"], a["approved_at"], "operation_approval_invalid")
+        checks.append(f"operation_approved:{len(approvers)}/{needed}")
+        state["approvers"] = [{"id": x["id"], "public_key": x["public_key"]} for x in approvers]
+        try:
+            ok = self.payments.register(key, ah)
+        except Exception:  # noqa: BLE001
+            return "checker_unavailable"
+        if ok is False:
+            return "operation_replayed"
+        if ok is not True:
+            return "checker_unavailable"
+        state["registered"] = True
+        if "valid_from" in m and at < _ts(m["valid_from"]):
+            return "mandate_not_yet_valid"
+        if at > _ts(m["valid_until"]):
+            return "mandate_expired"
+        revoked = self._revoked(m, mh, chain, sigs, at, self.revocations)
+        if revoked:
+            return revoked
+        if self.revocation_feed is not None:
+            try:
+                fed = self.revocation_feed()
+            except Exception:  # noqa: BLE001
+                fed = None
+            if not isinstance(fed, list):
+                return "status_unavailable"
+            revoked = self._revoked(m, mh, chain, sigs, at, fed)
+            if revoked:
+                return revoked
+            checks.append("revocation_list_current")
+        if "status_url" in m:
+            st = self._status(m, mh, chain, sigs, at)
+            if st == "revoked":
+                return "mandate_revoked"
+            if st != "active":
+                return "status_unavailable"
+            checks.append("status_active")
+        bad = self._listed_status(m, at, checks, frozenset())
+        if bad:
+            return bad
+        checks.append("not_revoked")
+        return None
+
     def _resolve(self, m: Any, p: Any, d: Any, o: Any, p_hash: str | None, at: datetime, checks: list[str],
-                 state: dict[str, Any], approvals: Any = None) -> str | dict | None:
-        bad = self._authentic(m, p, p_hash, approvals)
+                 state: dict[str, Any], approvals: Any = None, context: Any = None) -> str | dict | None:
+        bad = self._authentic(m, p, p_hash, approvals, context)
         if bad:
             return bad
         mh = mandate_hash(m)
@@ -1853,7 +2552,7 @@ class Checker:
             state["registered"], state["key"] = True, key
             return "blocked_by_override"
         return self._run(m, p, p_hash, at, checks, state, waive=waive, claimed=held, vouched=vouched,
-                         approvals=approvals)
+                         approvals=approvals, context=context)
 
     def _company_override(self, m: dict, o: dict) -> tuple[str, list[dict]]:
         """Company signatories resolving an over-limit or new-payee escalation (spec 7.1). Raises _Stop."""
@@ -2135,7 +2834,7 @@ def verify_receipt(mandate: Any, payment: Any, decision: Any, checker_keys: Iter
     checks = _get(decision, "checks")
     authority = [c for c in checks if isinstance(c, str) and c.startswith(("signer_authorized:", "override:"))] \
         if isinstance(checks, list) else []
-    extra = {"payee_approved_by": approved_payee_by} if version_of(decision, "decision") == V5 else {}
+    extra = {"payee_approved_by": approved_payee_by} if version_of(decision, "decision") in V56 else {}
     return {
         "valid": not problems,
         "problems": problems,
@@ -2153,4 +2852,77 @@ def verify_receipt(mandate: Any, payment: Any, decision: Any, checker_keys: Iter
                     "currency": _get(payment, "currency"), "from": _get(payment, "from_account"),
                     "payee": _get(payment, "payee.account")},
         **extra,
+    }
+
+
+def verify_operation_receipt(mandate: Any, approval: Any, decision: Any, checker_keys: Iterable[str] | dict, *,
+                             webauthn: dict | None = None) -> dict[str, Any]:
+    """Check an operation receipt offline (spec 15.4): mandate + operation approval + the checker's decision.
+
+    Verifies the decision against the checker's known keys, that it names exactly this mandate and this approval,
+    every mandate signature and delegation link, that the approval names the mandate by hash, and that everyone
+    the decision lists as ``signers`` and ``operation_approvers`` has a valid signature in what is presented.
+    """
+    wa = webauthn or {}
+    problems: list[str] = []
+    signed_by: list[str] = []
+    approved_by: list[str] = []
+    if not verify_decision(decision, checker_keys):
+        problems.append("decision_bad_signature")
+    m_ok = mandate_problem(mandate) is None
+    if not m_ok:
+        problems.append("mandate_malformed")
+    else:
+        mh = mandate_hash(mandate)
+        if _get(decision, "mandate.hash") != mh:
+            problems.append("decision_mandate_mismatch")
+        sigs, _ = _signatures(mandate)
+        valid = [s for s, sig in sigs if _verify("mandate", mh, sig, s["public_key"], wa,
+                                                 version_of(mandate, "mandate"))]
+        if not sigs or len(valid) != len(sigs):
+            problems.append("mandate_bad_signature")
+        counted = _persons(_get(decision, "signers")) if _get(decision, "signers") is not None else None
+        if _get(decision, "signers") is not None and (counted is None or not set(counted) <= {_pkey(s) for s in valid}):
+            problems.append("mandate_signers_mismatch")
+        signed_by = [i for i, _ in counted] if counted else [s["id"] for s in valid]
+        chain = mandate.get("delegation", [])
+        bad = _chain_problem(mandate, chain, wa) if chain else None
+        if bad:
+            problems.append(bad)
+    a_ok = operation_approval_problem(approval) is None
+    if not a_ok:
+        problems.append("operation_approval_malformed")
+    else:
+        ah = operation_approval_hash(approval)
+        if _get(decision, "operation") != {"id": approval["operation_id"], "revision": approval["revision"],
+                                           "approval_hash": ah}:
+            problems.append("decision_operation_mismatch")
+        if m_ok and approval["mandate_hash"] != mandate_hash(mandate):
+            problems.append("approval_mandate_mismatch")
+        valid_a = {_pkey(s["signer"]) for s in approval["sigs"]
+                   if _verify("operation_approval", ah, s["sig"], s["signer"]["public_key"], wa, V6)}
+        listed = _persons(_get(decision, "operation_approvers")) \
+            if _get(decision, "operation_approvers") is not None else None
+        if _get(decision, "outcome") == "allow" and (not listed or not set(listed) <= valid_a):
+            problems.append("operation_approval_bad_signature")
+        elif listed:
+            approved_by = [i for i, _ in listed]
+    checks = _get(decision, "checks")
+    prefixes = ("signer_authorized:", "operation_approved:")
+    authority = [c for c in checks if isinstance(c, str) and c.startswith(prefixes)] if isinstance(checks, list) else []
+    return {
+        "valid": not problems,
+        "problems": problems,
+        "outcome": _get(decision, "outcome"),
+        "reasons": _get(decision, "reasons"),
+        "checked_at": _get(decision, "checked_at"),
+        "checker": _get(decision, "checker.id"),
+        "company": _get(mandate, "company.name"),
+        "agent": _get(mandate, "agent.id"),
+        "signed_by": signed_by,
+        "authority": authority,
+        "approved_by": approved_by,
+        "operation": {"counterparty": _get(approval, "counterparty"), "id": _get(approval, "operation_id"),
+                      "revision": _get(approval, "revision"), "terms": _get(approval, "terms"),
+                      "expires_at": _get(approval, "expires_at")},
     }

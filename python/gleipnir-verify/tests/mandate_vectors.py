@@ -28,6 +28,8 @@ except ImportError:  # run as a script from the repo root
     from passkey import WEBAUTHN, Passkey
 
 OUT = Path(__file__).resolve().parents[3] / "typescript/packages/verify/test/fixtures/mandate-vectors.json"
+# 0.6, the agent protocol profile (spec 15), in a file of its own so the 0.4/0.5 fixture stays as it was.
+OUT_06 = OUT.with_name("mandate-vectors-06.json")
 
 
 def key(n: int) -> Ed25519PrivateKey:
@@ -686,7 +688,8 @@ def case(name: str, m: Any, payments: list[Any], *, now: str | list[str] = NOW, 
          webauthn: dict | None = None, mandates: list | None = None, which: list[int] | None = None,
          holds: list | None = None, ops: list | None = None, policy: dict | None = None,
          officers: list[str] | None = None, feed: Any = None, payment_log: str | None = None,
-         approvals: list | None = None) -> dict[str, Any]:
+         approvals: list | None = None, contexts: list | None = None, status_lists: dict | None = None,
+         status_list_keys: list[str] | None = None) -> dict[str, Any]:
     """One checker, several steps. Step i checks payments[i] against mandates[which[i]] (default: the mandate),
     or, when ops[i] is a resolve op, applies an override to the decision of step ops[i]["of"].
 
@@ -696,6 +699,8 @@ def case(name: str, m: Any, payments: list[Any], *, now: str | list[str] = NOW, 
     "ok", not a bool). ``payment_log``: None (in-memory), or a ``BrokenPaymentLog`` mode: "error" (every call
     raises), "junk" (register answers 1), "junk_take" (take answers 1) or "junk_late_register" (every register
     after the first answers 1). ``approvals``: per step, the payee approvals presented with that payment (0.5).
+    ``contexts``: per step, the checker's context (0.6: agent_jwk, counterparty, principal). ``status_lists``: what
+    the status list fetcher answers per uri (a token, or "error"); ``status_list_keys``: the trusted issuer keys.
     """
     extra: dict[str, Any] = {"mandates": mandates, "which": which} if mandates else {}
     if ops:
@@ -706,6 +711,11 @@ def case(name: str, m: Any, payments: list[Any], *, now: str | list[str] = NOW, 
         extra["payment_log"] = payment_log
     if approvals is not None:
         extra["approvals"] = approvals
+    if contexts is not None:
+        extra["contexts"] = contexts
+    if status_lists is not None:
+        extra["status_lists"] = status_lists
+        extra["status_list_keys"] = status_list_keys or []
     return {"name": name, "mandate": m, "payments": payments, "webauthn": webauthn or {}, **extra,
             "now": now if isinstance(now, list) else [now] * len(payments),
             "authority": KYB if authority is None else authority, "revocations": revocations or [],
@@ -1114,6 +1124,8 @@ def run(c: dict[str, Any]) -> list[dict[str, Any]]:
                         status=status_fn(c["status"]), webauthn=c.get("webauthn") or {},
                         require_payees=c["policy"].get("require_payees", False), officers=c["officers"],
                         revocation_feed=feed_fn(c.get("feed"), clock),
+                        status_list=status_list_fn(c.get("status_lists")),
+                        status_list_keys=c.get("status_list_keys", []),
                         clock=lambda: datetime.fromisoformat(
                             clock["now"].replace("Z", "+00:00")))
     out: list[dict] = []
@@ -1121,14 +1133,27 @@ def run(c: dict[str, Any]) -> list[dict[str, Any]]:
     which = c.get("which") or [0] * len(c["payments"])
     ops = c.get("ops") or ["check"] * len(c["payments"])
     approvals = c.get("approvals") or [None] * len(c["payments"])
-    for p, at, i, op, ap in zip(c["payments"], c["now"], which, ops, approvals, strict=True):
+    contexts = c.get("contexts") or [None] * len(c["payments"])
+    for p, at, i, op, ap, cx in zip(c["payments"], c["now"], which, ops, approvals, contexts, strict=True):
         clock["now"] = at
         if op == "check":
-            out.append(checker.check(mandates[i], p, ap))
+            out.append(checker.check(mandates[i], p, ap, cx) if cx is not None else checker.check(mandates[i], p, ap))
         else:
             d = out[op["resolve"]["of"]]
-            out.append(checker.resolve(mandates[i], p, d, build_override(op["resolve"], d), ap))
+            out.append(checker.resolve(mandates[i], p, d, build_override(op["resolve"], d), ap, cx))
     return out
+
+
+def status_list_fn(lists: dict | None):
+    if lists is None:
+        return None
+
+    def fetch(uri: str) -> Any:
+        token = lists.get(uri, "error")
+        if token == "error":
+            raise ConnectionError(uri)
+        return token
+    return fetch
 
 
 def expected(decisions: list[dict]) -> list[dict[str, Any]]:
@@ -1177,7 +1202,367 @@ def build() -> dict[str, Any]:
     }
 
 
+# ---------- 0.6: the agent protocol profile (spec 15) ----------
+
+V06 = "gleipnir/mandate/0.6"
+SHOP = "shop.example.com"
+STATUS_URI = "https://status.nordhafen.example/lists/1"
+STATUS_ISSUER = key(13)
+SESSION = key(14)  # a short-lived agent session key, like a PAP delegated key
+AGENT_JWK = M.public_key_jwk(M.public_key_of(AGENT))
+OTHER_JWK = M.public_key_jwk(M.public_key_of(OTHER))
+SESSION_JWK = M.public_key_jwk(M.public_key_of(SESSION))
+AGENT_JKT = M.jwk_thumbprint(AGENT_JWK)
+SALT = "c2FsdC1mb3ItdGhlLXZlY3RvcnM"
+PAIRWISE_ID = "pairwise:Qm9iLWF0LXNob3AtZXhhbXBsZQ"
+OP = {"operation_id": "exc_5Rt2", "revision": "1791487200-k3Jd9Qx2mW8v",
+      "summary": "Exchange the Stormline Jacket (M) for the insulated one, for $70.00 more.",
+      "terms": {"order_id": "ord_7Hk2", "item_id": "itm_4Qa", "replacement_sku": "stormline-insulated-m",
+                "price_difference": {"amount": "70.00", "currency": "USD"}},
+      "expires_at": "2026-10-23T09:30:00.000Z"}
+APPROVED_AT = "2026-10-23T09:10:00.000Z"
+
+
+def _epoch(t: str) -> int:
+    return int(datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp())
+
+
+def _status_tokens() -> tuple[dict[str, str], list[str]]:
+    """Status List Tokens for the vectors: entries 0 VALID, 1 INVALID, 2 SUSPENDED, 3 application-specific (2 bits
+    each), signed EdDSA and ES256 by trusted issuers, plus stale, expired, untrusted and wrong-subject tokens."""
+    from cryptography.hazmat.primitives import serialization as ser
+    from cryptography.hazmat.primitives.asymmetric import ec as _ec
+    p256 = _ec.derive_private_key(0x5EED5EED, _ec.SECP256R1())
+    p256_pub = "ecdsa-p256:" + M.b64u(p256.public_key().public_bytes(ser.Encoding.DER,
+                                                                      ser.PublicFormat.SubjectPublicKeyInfo))
+    now = _epoch(NOW)
+    entries = [0, 1, 2, 3]
+
+    def tok(uri: str = STATUS_URI, sk: Any = STATUS_ISSUER, iat: int = now - 60, exp: int = now + 3600,
+            alg: str = "EdDSA") -> str:
+        return M.status_list_token(entries, uri=uri, bits=2, sk=sk, iat=iat, exp=exp, alg=alg)
+    lists = {
+        STATUS_URI: tok(),
+        "https://status.nordhafen.example/lists/es256": tok("https://status.nordhafen.example/lists/es256", p256,
+                                                             alg="ES256"),
+        "https://status.nordhafen.example/lists/stale": tok("https://status.nordhafen.example/lists/stale",
+                                                             iat=now - 7200),
+        "https://status.nordhafen.example/lists/expired": tok("https://status.nordhafen.example/lists/expired",
+                                                               iat=now - 600, exp=now - 1),
+        "https://status.nordhafen.example/lists/untrusted": tok("https://status.nordhafen.example/lists/untrusted",
+                                                                 sk=OTHER),
+        "https://status.nordhafen.example/lists/other-sub": tok("https://status.nordhafen.example/lists/elsewhere"),
+        "https://status.nordhafen.example/lists/too-long": tok("https://status.nordhafen.example/lists/too-long",
+                                                                exp=now + 2 * 86400),
+        "https://status.nordhafen.example/lists/junk": "not.a.jwt",
+    }
+    return lists, [M.public_key_of(STATUS_ISSUER), p256_pub]
+
+
+def m06(sign: bool = True, sk: Ed25519PrivateKey = SIGNER, **kw: Any) -> dict[str, Any]:
+    kw.setdefault("agent", {"id": "ap-agent", "jkt": AGENT_JKT})
+    return mandate(sk=sk, sign=sign, v=V06, **kw)
+
+
+def listed(idx: int, uri: str = STATUS_URI) -> dict[str, Any]:
+    return {"status_list": {"idx": idx, "uri": uri}}
+
+
+def v06_cases() -> list[dict[str, Any]]:  # noqa: PLR0915
+    """0.6 payment checks: agent key thumbprints, counterparty domains, principal commitments and pairwise ids,
+    Token Status List entries; and 0.5 features under a 0.6 mandate."""
+    lists, keys = _status_tokens()
+    officer_sk = key(9)
+    officer = M.public_key_of(officer_sk)
+    out = []
+    m = m06()
+    agent_ok = {"agent_jwk": AGENT_JWK}
+    priv = {**AGENT_JWK, "d": M.b64u(bytes([2]) * 32)}
+    out.append(case("v06_agent_jkt", m, [pay(m, f"p_{i}", agent=None) for i in range(1, 6)],
+                    contexts=[agent_ok, {"agent_jwk": OTHER_JWK}, {}, {"agent_jwk": priv},
+                              {"agent_jwk": {**AGENT_JWK, "kid": "session-1", "alg": "EdDSA"}}]))
+    both = m06(agent={"id": "ap-agent", "public_key": M.public_key_of(AGENT), "jkt": AGENT_JKT})
+    out.append(case("v06_agent_public_key_and_jkt", both, [pay(both, "p_1"), pay(both, "p_2", agent=OTHER)]))
+    cp = m06(scope=scope(counterparties=[SHOP, "pay.example.org"]))
+    out.append(case("v06_counterparty_exact_match", cp, [pay(cp, f"p_{i}", agent=None) for i in range(1, 7)],
+                    contexts=[{**agent_ok, "counterparty": SHOP}, {**agent_ok, "counterparty": "pay.example.org"},
+                              {**agent_ok, "counterparty": "SHOP.example.com"},
+                              {**agent_ok, "counterparty": "eu.shop.example.com"},
+                              {**agent_ok, "counterparty": "shop.example.com."}, agent_ok]))
+    for name, idx, uri in (("v06_status_list_valid", 0, STATUS_URI),
+                           ("v06_status_list_es256_valid", 0, "https://status.nordhafen.example/lists/es256"),
+                           ("v06_status_list_revoked", 1, STATUS_URI),
+                           ("v06_status_list_suspended", 2, STATUS_URI),
+                           ("v06_status_list_application_value_unknown", 3, STATUS_URI),
+                           ("v06_status_list_index_out_of_range", 40, STATUS_URI),
+                           ("v06_status_list_unreachable", 0, "https://status.nordhafen.example/lists/down"),
+                           ("v06_status_list_stale", 0, "https://status.nordhafen.example/lists/stale"),
+                           ("v06_status_list_expired", 0, "https://status.nordhafen.example/lists/expired"),
+                           ("v06_status_list_untrusted_issuer", 0, "https://status.nordhafen.example/lists/untrusted"),
+                           ("v06_status_list_other_subject", 0, "https://status.nordhafen.example/lists/other-sub"),
+                           ("v06_status_list_lifetime_over_24h", 0, "https://status.nordhafen.example/lists/too-long"),
+                           ("v06_status_list_junk", 0, "https://status.nordhafen.example/lists/junk")):
+        sm = m06(status=listed(idx, uri))
+        out.append(case(name, sm, [pay(sm, "p_1", agent=None)], contexts=[agent_ok], status_lists=lists,
+                        status_list_keys=keys))
+    sm = m06(status=listed(0))
+    out.append(case("v06_status_list_not_wired", sm, [pay(sm, "p_1", agent=None)], contexts=[agent_ok]))
+    down = m06(status=listed(0, "https://status.nordhafen.example/lists/down"))
+    out.append(case("v06_status_list_unavailable_officer_override", down, [pay(down, "p_1", agent=None)] * 2,
+                    contexts=[agent_ok] * 2, status_lists=lists, status_list_keys=keys, officers=[officer],
+                    ops=["check", resolve(0, signers=((officer_sk, "ops@bank"),))]))
+    pc = m06(principal_commitment=M.principal_commitment("customer-4711@nordhafen", SALT))
+    out.append(case("v06_principal_commitment", pc, [pay(pc, f"p_{i}", agent=None) for i in range(1, 5)],
+                    contexts=[{**agent_ok, "principal": {"id": "customer-4711@nordhafen", "salt": SALT}},
+                              {**agent_ok, "principal": {"id": "customer-4711@nordhafen", "salt": SALT[:-1] + "x"}},
+                              {**agent_ok, "principal": {"id": "customer-4712@nordhafen", "salt": SALT}}, agent_ok]))
+    no_commit = m06()
+    out.append(case("v06_principal_without_commitment", no_commit, [pay(no_commit, "p_1", agent=None)],
+                    contexts=[{**agent_ok, "principal": {"id": "customer-4711@nordhafen", "salt": SALT}}]))
+    pw = m06(signer={"id": PAIRWISE_ID, "public_key": M.public_key_of(SIGNER)})
+    out.append(case("v06_pairwise_signer", pw, [pay(pw, "p_1", agent=None)], contexts=[agent_ok],
+                    authority=[row(PAIRWISE_ID, SIGNER)]))
+    new = {"name": "Kranbau Wels GmbH", "account": {"scheme": "iban", "iban": "LT121000011101001000"}}
+    esc = m06(scope=scope(unlisted_payees="escalate"))
+    out.append(case("v06_payee_approval_under_06", esc, [pay(esc, "p_1", payee=new, agent=None),
+                                                         pay(esc, "p_2", payee=new, agent=None)],
+                    approvals=[[approval(esc, new)], []], contexts=[agent_ok] * 2))
+    rev = M.revoke(m, signer=signer(), sk=SIGNER, id="r_m6", revoked_at="2026-10-22T00:00:00.000Z")
+    out.append(case("v06_revoked", m, [pay(m, "p_1", agent=None)], contexts=[agent_ok], revocations=[rev]))
+    m5 = mandate(v="gleipnir/mandate/0.5", agent={"id": "ap-agent", "jkt": AGENT_JKT})
+    out.append(case("v06_field_in_05_mandate_malformed", m5, [pay(m5, "p_1", agent=None)], contexts=[agent_ok]))
+    m4 = mandate()
+    out.append(case("v06_context_ignored_for_04", m4, [pay(m4, "p_1")],
+                    contexts=[{"agent_jwk": OTHER_JWK, "counterparty": "x"}]))
+    return out
+
+
+def op_approval(m: dict, *, op: dict = OP, cp: str = SHOP, at: str = APPROVED_AT,
+                signers: tuple = ((SIGNER, SIGNER_ID),), agent_jkt: str | None = None) -> dict[str, Any]:
+    a = M.approve_operation(m, counterparty=cp, operation={k: v for k, v in op.items() if k != "summary"},
+                            approved_at=at, agent_jkt=agent_jkt)
+    for sk, sid in signers:
+        a = M.sign_operation_approval(a, sk, {"id": sid, "public_key": M.public_key_of(sk)})
+    return a
+
+
+def op_case(name: str, m: Any, steps: list[tuple], *, authority: list | None = None, revocations: list | None = None,
+            status_lists: dict | None = None, status_list_keys: list[str] | None = None,
+            webauthn: dict | None = None) -> dict[str, Any]:
+    """One checker, several operation checks. Each step: (approval, operation, context, now)."""
+    return {"name": name, "mandate": m,
+            "steps": [{"approval": a, "operation": o, "context": c, "now": t} for a, o, c, t in steps],
+            "authority": KYB if authority is None else authority, "revocations": revocations or [],
+            "status_lists": status_lists, "status_list_keys": status_list_keys or [], "webauthn": webauthn or {}}
+
+
+def operation_cases() -> list[dict[str, Any]]:  # noqa: PLR0915
+    """0.6 per-operation approvals (spec 15.4)."""
+    lists, keys = _status_tokens()
+    base = m06(scope=scope(counterparties=[SHOP]), status=listed(0))
+    ok_ctx = {"counterparty": SHOP, "agent_jwk": AGENT_JWK}
+    a1 = op_approval(base)
+    op2 = {**OP, "revision": "1791487260-Zt8wq1", "terms": {**OP["terms"], "replacement_sku": "stormline-insulated-l"}}
+    a2 = op_approval(base, op=op2)
+    tampered = {**a1, "terms": {**OP["terms"], "price_difference": {"amount": "7.00", "currency": "USD"}}}
+    other_cp = op_approval(base, cp="other-shop.example.com")
+    early = op_approval(base, at="2026-09-30T00:00:00.000Z")
+    ahead = op_approval(base, at="2026-10-23T09:20:00.000Z")
+    outsider = op_approval(base, signers=((OTHER, "intern@nordhafen.at"),))
+    rev = M.revoke(base, signer=signer(), sk=SIGNER, id="r_op", revoked_at="2026-10-22T00:00:00.000Z")
+    revoked_sl = m06(scope=scope(counterparties=[SHOP]), status=listed(1))
+    suspended_sl = m06(scope=scope(counterparties=[SHOP]), status=listed(2))
+    app_sl = m06(scope=scope(counterparties=[SHOP]), status=listed(3))
+    down_sl = m06(scope=scope(counterparties=[SHOP]),
+                  status=listed(0, "https://status.nordhafen.example/lists/down"))
+    no_key = m06(agent={"id": "pa-agent"})
+    session_bound = op_approval(no_key, agent_jkt=M.jwk_thumbprint(SESSION_JWK))
+    unbound = op_approval(no_key)
+    pub_agent = m06(agent={"id": "ap-agent", "public_key": M.public_key_of(AGENT)})
+    pk_b = Passkey(0xB16B00B5)
+    who_b = {"id": SIGNER_ID, "public_key": pk_b.public_key}
+    pk_m = m06(sign=False, signer=who_b)
+    pk_m = {**pk_m, "sig": pk_b.assert_(M.passkey_challenge(pk_m))}
+    pk_a = op_approval(pk_m, signers=())
+    pk_a = {**pk_a, "sigs": [{"signer": who_b, "sig": pk_b.assert_(
+        M.hash_to_bytes(M.operation_approval_digest(pk_a)))}]}
+    pk_kyb = [row(SIGNER_ID, SIGNER, keys=[pk_b.public_key])]
+    joint = multi(v=V06, agent={"id": "ap-agent", "jkt": AGENT_JKT})
+    joint_kyb = [row(SIGNER_ID, SIGNER, joint=2), row(HOFER_P["id"], HOFER, joint=2)]
+    j1 = op_approval(joint)
+    j2 = op_approval(joint, signers=((SIGNER, SIGNER_ID), (HOFER, HOFER_P["id"])))
+    pw = m06(signer={"id": PAIRWISE_ID, "public_key": M.public_key_of(SIGNER)},
+             principal_commitment=M.principal_commitment("customer-4711@shop", SALT))
+    pw_a = op_approval(pw, signers=((SIGNER, PAIRWISE_ID),))
+    m5 = mandate(v="gleipnir/mandate/0.5")
+    a5 = {**a1, "mandate_hash": M.mandate_hash(m5)}
+    late = "2026-10-23T09:31:00.000Z"
+    no_terms = {k: v for k, v in OP.items() if k != "terms"}
+    nt = op_approval(base, op=no_terms)
+    return [
+        op_case("op_allow_then_replays", base,
+                [(a1, OP, ok_ctx, NOW), (a1, OP, ok_ctx, "2026-10-23T09:15:00.000Z"), (a2, op2, ok_ctx, NOW),
+                 (a1, OP, ok_ctx, late)], status_lists=lists, status_list_keys=keys),
+        op_case("op_wrong_agent_key", base,
+                [(a1, OP, {"counterparty": SHOP, "agent_jwk": OTHER_JWK}, NOW), (a1, OP, {"counterparty": SHOP}, NOW),
+                 (a1, OP, ok_ctx, NOW)], status_lists=lists, status_list_keys=keys),
+        op_case("op_agent_key_from_public_key", pub_agent,
+                [(op_approval(pub_agent), OP, {"counterparty": SHOP, "agent_jwk": OTHER_JWK}, NOW),
+                 (op_approval(pub_agent), OP, {"counterparty": SHOP, "agent_jwk": AGENT_JWK}, NOW)]),
+        op_case("op_approval_bound_to_session_key", no_key,
+                [(session_bound, OP, {"counterparty": SHOP, "agent_jwk": AGENT_JWK}, NOW),
+                 (session_bound, OP, {"counterparty": SHOP, "agent_jwk": SESSION_JWK}, NOW)]),
+        op_case("op_no_agent_binding", no_key, [(unbound, OP, {"counterparty": SHOP}, NOW)]),
+        op_case("op_wrong_counterparty", base,
+                [(a1, OP, {**ok_ctx, "counterparty": "other-shop.example.com"}, NOW),
+                 (other_cp, OP, {**ok_ctx, "counterparty": "other-shop.example.com"}, NOW),
+                 (a1, OP, {**ok_ctx, "counterparty": "Shop.example.com"}, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_tampered_terms", base, [(tampered, OP, ok_ctx, NOW)], status_lists=lists, status_list_keys=keys),
+        op_case("op_terms_or_revision_differ", base,
+                [(a1, {**OP, "terms": tampered["terms"]}, ok_ctx, NOW), (a1, {**OP, "revision": "r2"}, ok_ctx, NOW),
+                 (a1, {**OP, "expires_at": "2026-10-23T10:30:00.000Z"}, ok_ctx, NOW),
+                 (a1, no_terms, ok_ctx, NOW), (nt, no_terms, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_expired", base, [(a1, OP, ok_ctx, late)], status_lists=lists, status_list_keys=keys),
+        op_case("op_revoked_via_status_list", revoked_sl, [(op_approval(revoked_sl), OP, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_suspended_via_status_list", suspended_sl, [(op_approval(suspended_sl), OP, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_status_unknown", app_sl, [(op_approval(app_sl), OP, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_status_unreachable", down_sl, [(op_approval(down_sl), OP, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_status_list_not_wired", base, [(a1, OP, ok_ctx, NOW)]),
+        op_case("op_mandate_revoked", base, [(a1, OP, ok_ctx, NOW)], revocations=[rev], status_lists=lists,
+                status_list_keys=keys),
+        op_case("op_signed_by_outsider", base, [(outsider, OP, ok_ctx, NOW)], status_lists=lists, status_list_keys=keys,
+                authority=[*KYB, row("intern@nordhafen.at", OTHER, may_sign=False)]),
+        op_case("op_signer_unknown", base, [(a1, OP, ok_ctx, NOW)], authority=[], status_lists=lists,
+                status_list_keys=keys),
+        op_case("op_dated_before_mandate_or_ahead", base, [(early, OP, ok_ctx, NOW), (ahead, OP, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_passkey_approval", pk_m, [(pk_a, OP, {"counterparty": SHOP, "agent_jwk": AGENT_JWK}, NOW)],
+                authority=pk_kyb, webauthn=WEBAUTHN),
+        op_case("op_joint_needs_both", joint, [(j1, OP, ok_ctx, NOW), (j2, OP, ok_ctx, NOW)], authority=joint_kyb),
+        op_case("op_pairwise_principal", pw,
+                [(pw_a, OP, {**ok_ctx, "principal": {"id": "customer-4711@shop", "salt": SALT[:-1] + "A"}}, NOW),
+                 (pw_a, OP, {**ok_ctx, "principal": {"id": "customer-4711@shop", "salt": SALT}}, NOW)],
+                authority=[row(PAIRWISE_ID, SIGNER)]),
+        op_case("op_mandate_not_06", m5, [(a5, OP, ok_ctx, NOW)]),
+        op_case("op_malformed", base, [({**a1, "note": "x"}, OP, ok_ctx, NOW),
+                                       (a1, {k: v for k, v in OP.items() if k != "revision"}, ok_ctx, NOW),
+                                       ("junk", OP, ok_ctx, NOW), (a1, OP, ok_ctx, NOW)],
+                status_lists=lists, status_list_keys=keys),
+        op_case("op_approval_for_other_mandate", base, [({**a1, "mandate_hash": M.mandate_hash(m5)}, OP, ok_ctx, NOW)]),
+    ]
+
+
+def run_operations(c: dict[str, Any]) -> list[dict[str, Any]]:
+    clock = {"now": c["steps"][0]["now"]}
+    checker = M.Checker(id="bank:VECTORS", sk=BANK, authority=authority_fn(c["authority"]), holds=holds_fn(HOLDS),
+                        revocations=c["revocations"], webauthn=c.get("webauthn") or {},
+                        status_list=status_list_fn(c.get("status_lists")),
+                        status_list_keys=c.get("status_list_keys", []),
+                        clock=lambda: datetime.fromisoformat(clock["now"].replace("Z", "+00:00")))
+    out = []
+    for s in c["steps"]:
+        clock["now"] = s["now"]
+        out.append(checker.check_operation(c["mandate"], s["approval"], s["operation"], s["context"]))
+    return out
+
+
+def problem_cases_06() -> list[list[Any]]:
+    """[kind, input, problem]: 0.6 messages both implementations give, JWK thumbprints and status list answers."""
+    m = m06(sign=False)
+    out: list[list[Any]] = []
+    for extra in ({"agent": {"id": "a", "jkt": "short"}},
+                  {"agent": {"id": "a", "jkt": AGENT_JKT, "public_key": M.public_key_of(OTHER)}},
+                  {"agent": {"id": "a", "jkt": AGENT_JKT[:-1] + "_"}},
+                  {"scope": scope(counterparties=[])}, {"scope": scope(counterparties=["*.shop.example.com"])},
+                  {"scope": scope(counterparties=["Shop.example.com"])}, {"scope": scope(counterparties=["shop."])},
+                  {"scope": scope(counterparties=["localhost"])}, {"scope": scope(counterparties=["10.0.0.1"])},
+                  {"scope": scope(counterparties=["shop.example.com:443"])},
+                  {"scope": scope(counterparties=[SHOP, SHOP])},
+                  {"scope": scope(counterparties=["xn--bcher-kva.example"])},
+                  {"status": {"status_list": {"idx": -1, "uri": STATUS_URI}}},
+                  {"status": {"status_list": {"idx": 0, "uri": "http://x.example"}}},
+                  {"status": {"status_list": {"idx": 0}}}, {"status": {"other": {}}},
+                  {"principal_commitment": "sha256:XYZ"},
+                  {"signer": {"id": PAIRWISE_ID, "name": "K. Berger", "public_key": M.public_key_of(SIGNER)}},
+                  {"signer": {"id": "pairwise:short", "public_key": M.public_key_of(SIGNER)}}):
+        mm = {**m, **extra}
+        out.append(["mandate", mm, M.mandate_problem(mm)])
+    m5 = {**m, "v": "gleipnir/mandate/0.5", "scope": scope(counterparties=[SHOP])}
+    out.append(["mandate", m5, M.mandate_problem(m5)])
+    a = op_approval(m06())
+    for bad in ({**a, "v": "gleipnir/operation_approval/0.5"}, {**a, "counterparty": "Shop.Example.com"},
+                {**a, "note": 1}, {**a, "terms": [1]}, {**a, "expires_at": "2026-10-23T09:00:00.000Z"},
+                {**a, "agent_jkt": "x"}, {**a, "sigs": []}, {**a, "operation_id": "has space"},
+                {**a, "mandate_hash": "sha256:00"}, {**a, "revision": "r" * 257}):
+        out.append(["operation_approval", bad, M.operation_approval_problem(bad)])
+    for op in (OP, {**OP, "operation_id": ""}, {**OP, "extra": 1}, {**OP, "expires_at": "2026-10-23T09:30:00-07:00"},
+               {**OP, "terms": "x"}, {**OP, "summary": 7}):
+        out.append(["operation", op, M.operation_problem(op)])
+    for d in (SHOP, "a.b", "shop-.example.com", "-shop.example.com", "sh_op.example.com", "a" * 64 + ".com",
+              "example.123", "例え.jp"):
+        out.append(["domain", d, M.domain_problem(d)])
+    # RFC 8037 appendix A.3: the thumbprint of the example Ed25519 key.
+    rfc = {"kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}
+    for jwk in (rfc, AGENT_JWK, {**AGENT_JWK, "kid": "k1"}, M.public_key_jwk(Passkey(0xB16B00B5).public_key),
+                {"kty": "OKP", "crv": "X25519", "x": rfc["x"]}, {**rfc, "d": rfc["x"]}, {**rfc, "x": rfc["x"] + "A"},
+                {"kty": "EC", "crv": "P-256", "x": rfc["x"]}, "x"):
+        out.append(["jwk_thumbprint", jwk, M.jwk_problem(jwk) or M.jwk_thumbprint(jwk)])
+    for pk in (M.public_key_of(AGENT), Passkey(0xC0FFEE).public_key):
+        out.append(["public_key_jwk", pk, M.public_key_jwk(pk)])
+    out.append(["principal_commitment", {"id": "customer-4711@nordhafen", "salt": SALT},
+                M.principal_commitment("customer-4711@nordhafen", SALT)])
+    lists, keys = _status_tokens()
+    at = datetime.fromisoformat(NOW.replace("Z", "+00:00"))
+    for uri, idx in [(STATUS_URI, i) for i in range(5)] + [(u, 0) for u in lists if u != STATUS_URI]:
+        try:
+            value: Any = M.status_list_status(lists[uri], uri, idx, keys, at)
+        except ValueError:
+            value = "error"
+        out.append(["status_list", {"token": lists[uri], "uri": uri, "idx": idx, "keys": keys, "at": NOW}, value])
+    return out
+
+
+def build_06() -> dict[str, Any]:
+    out_cases = []
+    for c in v06_cases():
+        decisions = run(c)
+        first = (c.get("mandates") or [c["mandate"]])[(c.get("which") or [0])[0]]
+        receipt = M.verify_receipt(first, c["payments"][0], decisions[0], [M.public_key_of(BANK)],
+                                   webauthn=c.get("webauthn") or {},
+                                   payee_approvals=(c.get("approvals") or [[]])[0] or [])
+        out_cases.append({**c, "expect": expected(decisions), "receipt": {k: v for k, v in receipt.items()
+                                                                          if k != "checked_at"}})
+    out_ops = []
+    for c in operation_cases():
+        decisions = run_operations(c)
+        receipt = M.verify_operation_receipt(c["mandate"], c["steps"][0]["approval"], decisions[0],
+                                             [M.public_key_of(BANK)], webauthn=c.get("webauthn") or {})
+        out_ops.append({**c, "expect": expected(decisions),
+                        "receipt": {k: v for k, v in receipt.items() if k != "checked_at"}})
+    return {
+        "note": "Generated by python/gleipnir-verify/tests/mandate_vectors.py (spec 0.6, section 15). Test keys "
+                "from fixed seeds.",
+        "bank": {"id": "bank:VECTORS", "seed_hex": (bytes([3]) * 32).hex(), "public_key": M.public_key_of(BANK)},
+        "cases": out_cases,
+        "operations": out_ops,
+        "problems": problem_cases_06(),
+        "operation_keys": [[cp, oid, M.operation_key(cp, oid)] for cp, oid in [
+            (SHOP, "exc_5Rt2"), ("shop.example.com|exc", "5Rt2"), ("a.example", "é")]],
+    }
+
+
 if __name__ == "__main__":
+    import sys
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(build(), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {OUT}")
+    if "--only-06" not in sys.argv:  # the 0.4/0.5 fixture has random decision ids: rewrite it only when it changes
+        OUT.write_text(json.dumps(build(), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"wrote {OUT}")
+    OUT_06.write_text(json.dumps(build_06(), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"wrote {OUT_06}")
