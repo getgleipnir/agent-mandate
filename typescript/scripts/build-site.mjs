@@ -5,6 +5,8 @@
  * - site/verify/index.html: the browser verifier;
  * - site/approve/index.html: passkey approval of one exact agent action (no backend);
  * - site/mandate/index.html: a signatory reviews a mandate and signs it with a passkey (no backend);
+ * - site/link/index.html and site/link/v/index.html: mandate links (experimental, docs/mandate-link.md): sign what an
+ *   agent may do toward a third party, and check such a link. The check page is the one page allowed to fetch (https only), for the link's own status_url;
  * - site/demo/demo.js: the getgleipnir.com/demo walkthrough. Unlike the others it is a separate file next to a
  *   hand-written index.html, because getgleipnir.com's CSP is script-src 'self' (no inline scripts).
  *
@@ -23,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const PAGES = ["verify", "approve", "mandate"];
+export const PAGES = ["verify", "approve", "mandate", "link", "link/v"];
 
 /** A page's bundled script, built from site/<name>/src/app.js (deterministic). */
 export async function bundle(name) {

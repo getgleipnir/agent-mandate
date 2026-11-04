@@ -31,6 +31,30 @@ for (const name of ["verify", "approve"]) {
   });
 }
 
+describe("site/link (mandate links, experimental)", () => {
+  for (const [name, connect] of [["link", "connect-src 'none'"], ["link/v", "connect-src https:"]] as const) {
+    const html = readFileSync(SITE + name + "/index.html", "utf8");
+    const script = /<script type="module">([\s\S]*)<\/script>/.exec(html)?.[1] ?? "";
+
+    it(`${name}: one self-contained file, script pinned by hash, ${connect}`, () => {
+      const csp = /Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1] ?? "";
+      const hash = "sha256-" + createHash("sha256").update(script, "utf8").digest("base64");
+      expect(csp).toContain(`script-src '${hash}'`);
+      expect(csp).toContain("default-src 'none'");
+      expect(csp).toContain(connect);
+      expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=|@import/);
+      expect(script).not.toMatch(/XMLHttpRequest|WebSocket|sendBeacon|EventSource|\.innerHTML\b|eval\(/);
+      if (name === "link") expect(script).not.toMatch(/\bfetch\(/);
+    });
+
+    it(`${name}: is up to date with its source (run \`npm run build:site\`)`, async () => {
+      // @ts-expect-error: plain .mjs build script
+      const { buildPage } = await import("../../../scripts/build-site.mjs");
+      expect((await buildPage(name)) === html, `site/${name}/index.html is stale: run \`npm run build:site\``).toBe(true);
+    });
+  }
+});
+
 describe("site pages: content", () => {
   it("verify: says that nothing is uploaded, and offers the checks, including approvers", () => {
     const html = readFileSync(SITE + "verify/index.html", "utf8");

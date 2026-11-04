@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check an agent's mandate</title>
+<meta name="description" content="Check who sent an AI agent and what it may do. The check runs in your browser.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src '__SCRIPT_HASH__'; style-src 'unsafe-inline'; img-src data:; connect-src https:; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #e8edf0; --sheet: #f7f9fa; --ink: #17222b; --muted: #55626c; --rule: #c3ccd2; --steel: #2b5b86;
+  --ok: #1d6a4d; --ok-bg: #dcefe5; --bad: #a1271e; --bad-bg: #f6dedb; --warn: #8a5a00; --warn-bg: #f6ebd2; --focus: #2b5b86;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12181d; --sheet: #1a2229; --ink: #dce4e9; --muted: #93a1ab; --rule: #33414b; --steel: #8db7de;
+    --ok: #6fcf9f; --ok-bg: #173327; --bad: #f08a7f; --bad-bg: #3a1c19; --warn: #e5b85c; --warn-bg: #352a12; --focus: #8db7de;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12181d; --sheet: #1a2229; --ink: #dce4e9; --muted: #93a1ab; --rule: #33414b; --steel: #8db7de;
+  --ok: #6fcf9f; --ok-bg: #173327; --bad: #f08a7f; --bad-bg: #3a1c19; --warn: #e5b85c; --warn-bg: #352a12; --focus: #8db7de;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 18px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 44rem; margin: 0 auto; padding: 2rem 16px 4rem; }
+h1 { font-size: 1.1rem; margin: 0 0 1rem; font-weight: 650; color: var(--muted); }
+h2 { font-size: 1.05rem; margin: 2rem 0 .5rem; font-weight: 650; }
+p { margin: 0 0 1rem; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.verdict { border-radius: 10px; padding: 1.1rem 1.25rem; border: 2px solid currentColor; display: grid; grid-template-columns: 1fr auto; gap: .25rem 1.5rem; align-items: center; }
+.verdict.valid { color: var(--ok); background: var(--ok-bg); }
+.verdict.bad { color: var(--bad); background: var(--bad-bg); }
+.verdict.warn { color: var(--warn); background: var(--warn-bg); }
+.verdict .word { font-size: clamp(2.2rem, 8vw, 3.2rem); font-weight: 750; line-height: 1.05; letter-spacing: -.01em; }
+.verdict .why { grid-column: 1; color: var(--ink); font-size: 1rem; }
+.verdict .codebox { grid-column: 2; grid-row: 1 / span 2; text-align: right; color: var(--ink); }
+.codebox .label { font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.codebox .code { font: 700 clamp(1.8rem, 7vw, 2.6rem)/1.1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .08em; white-space: nowrap; }
+@media (max-width: 520px) {
+  .verdict { grid-template-columns: 1fr; }
+  .verdict .codebox { grid-column: 1; grid-row: auto; text-align: left; margin-top: .5rem; padding-top: .5rem; border-top: 1px solid var(--rule); }
+}
+.hint { color: var(--muted); font-size: .92rem; margin-top: .5rem; }
+
+table.facts { width: 100%; border-collapse: collapse; margin: 1.25rem 0 0; background: var(--sheet); border-radius: 8px; overflow: hidden; }
+table.facts th, table.facts td { text-align: left; vertical-align: top; padding: .7rem .9rem; border-bottom: 1px solid var(--rule); }
+table.facts tr:last-child th, table.facts tr:last-child td { border-bottom: 0; }
+table.facts th { width: 34%; color: var(--muted); font-weight: 600; font-size: .92rem; }
+table.facts td { overflow-wrap: anywhere; font-size: 1.05rem; }
+table.facts td.big { font-size: 1.2rem; font-weight: 650; }
+table.facts ul { margin: 0; padding-left: 1.1rem; }
+table.facts li { margin: .15rem 0; }
+.untrusted table.facts { opacity: .6; }
+.untrusted-note { color: var(--bad); font-weight: 650; margin-top: 1.25rem; }
+.sub { display: block; color: var(--muted); font-size: .88rem; font-weight: 400; }
+.tag { display: inline-block; font-size: .85rem; font-weight: 700; padding: .05rem .5rem; border-radius: 4px; }
+.tag.ok { color: var(--ok); background: var(--ok-bg); }
+.tag.bad { color: var(--bad); background: var(--bad-bg); }
+.tag.warn { color: var(--warn); background: var(--warn-bg); }
+.tag.none { color: var(--muted); border: 1px solid var(--rule); }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .88rem; }
+
+textarea { width: 100%; min-height: 6rem; font: .9rem/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: .55rem .65rem; resize: vertical; }
+button { font: inherit; font-size: 1rem; font-weight: 600; padding: .6rem 1.1rem; border-radius: 8px; border: 1px solid var(--steel); background: var(--steel); color: var(--sheet); cursor: pointer; margin-top: .75rem; }
+details { margin-top: 1.5rem; border-top: 1px solid var(--rule); padding-top: .75rem; }
+summary { cursor: pointer; font-weight: 600; }
+pre { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: .75rem; overflow: auto; font-size: .8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .88rem; }
+footer p { max-width: 40em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent mandate check <span class="tag none">Experimental</span></h1>
+
+  <section id="paste" hidden>
+    <p>Paste the link the agent gave you.</p>
+    <label for="input" class="hint">Link</label>
+    <textarea id="input" spellcheck="false" placeholder="https://…/link/v/#eyJ…"></textarea>
+    <button type="button" id="check">Check</button>
+  </section>
+
+  <section id="result" hidden aria-live="polite">
+    <div class="verdict" id="verdict">
+      <div class="word" id="word"></div>
+      <div class="why" id="why"></div>
+      <div class="codebox" id="codebox"><div class="label">Code</div><div class="code" id="code"></div></div>
+    </div>
+    <p class="hint" id="code-hint">Ask the agent for its code. It must match the code above.</p>
+    <p class="untrusted-note" id="untrusted" hidden>The details below are not trustworthy: the signature does not cover them.</p>
+    <div id="facts-wrap"><table class="facts"><tbody id="facts"></tbody></table></div>
+    <details>
+      <summary>Technical details</summary>
+      <pre id="raw"></pre>
+    </details>
+  </section>
+
+  <footer><p>The check runs in this browser. The link carries the whole mandate after the #, which browsers do not send to any server. If the mandate names a status URL, this page asks it whether the mandate was revoked; otherwise nothing is sent anywhere.</p>
+  <p>A valid signature proves that the holder of the signing key approved exactly this scope, and nothing outside it. It does not prove who that holder is, unless the key is enrolled with a bank or an identity provider; confirm the person's identity as you normally would. It does not make the agent's decisions correct.</p></footer>
+</main>
+<script type="module">__SCRIPT__</script>
+</body>
+</html>
