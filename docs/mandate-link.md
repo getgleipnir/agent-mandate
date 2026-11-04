@@ -151,13 +151,16 @@ the link was checked (and, through the URL, which link). The pages say so.
 The host checks run in the browser and cannot see DNS: a public name that resolves to a private address is not
 caught. The browser's own protections against requests to private networks apply.
 
-This MVP has no status service, and the answer is not signed: whoever controls the URL decides it, and an attacker
-who controls the network path or the status host can make a revoked link look active. Follow-up for real
-revocation: a small service (for example a Cloudflare Worker with a key-value store) that
+The signing page at getgleipnir.com sets `status_url` to its own status service and creates a separate P-256
+revocation key in the browser. The slot in the URL is a random id plus the RFC 7638 thumbprint of that key, and it is
+covered by the link's signature, so one link cannot take over another link's slot. `POST /api/link-revoke` accepts a
+signature by that key over `"gleipnir/link-revoke/v0.1\n" + slot`. Revoking therefore works only from the browser that
+signed, also for passkey links.
 
-1. accepts a revocation signed by the link's own key (`"gleipnir/link-revoke/v0.1\n" + hash`), so only the signer
-   can revoke, and
-2. answers with a signed, timed statement bound to the link hash, as `status_url` does for payment mandates
+The answer is not signed: whoever controls the URL decides it, and an attacker who controls the network path or the
+status host can make a revoked link look active. Follow-up for stronger revocation: a service that
+
+1. answers with a signed, timed statement bound to the link hash, as `status_url` does for payment mandates
    (spec 9.1), which the check page verifies.
 
 ## What it proves, and what it does not
