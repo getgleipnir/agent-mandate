@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For teams building AI agents | Gleipnir</title>
+<meta name="description" content="Give your agent a permission the other side can check, across banks, companies and protocols. Open spec, checkers and MCP server.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0C0E13">
+<link rel="canonical" href="https://getgleipnir.com/for-platforms">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Gleipnir">
+<meta property="og:url" content="https://getgleipnir.com/for-platforms">
+<meta property="og:title" content="For teams building AI agents | Gleipnir">
+<meta property="og:description" content="Give your agent a permission the other side can check, across banks, companies and protocols. Open spec, checkers and MCP server.">
+<meta property="og:image" content="https://getgleipnir.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary">
+<link rel="alternate" type="text/markdown" href="/skills.md" title="Agent guide">
+<link rel="preload" href="/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Gleipnir", "url": "https://getgleipnir.com/", "logo": "https://getgleipnir.com/assets/icons/icon-512.png", "email": "ivan.voloshyn@getgleipnir.com", "description": "Signed mandates for AI agents: a person or company signs what one agent may do, and the other side can check it before acting.", "disambiguatingDescription": "Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app).", "sameAs": ["https://github.com/getgleipnir"]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="bar"><div class="wrap bar-in">
+<a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 36" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></svg><span>Gleipnir</span></a>
+<nav class="nav" aria-label="Main"><a href="/#how">How it works</a><a href="/#uses">Use cases</a><a href="/demo/">Payment demo</a><a href="/link/">Mandate link</a><a href="/spec">Spec</a></nav>
+<a class="btn small gold" href="mailto:ivan.voloshyn@getgleipnir.com">Talk to us</a>
+</div></header>
+<main id="main">
+<section class="head"><div class="wrap head-in"><div><h1>For teams building agents</h1><p class="lede">Your agent gets stopped because nobody can tell who sent it. Limits inside your own product don’t help once the agent leaves it.</p></div><div class="vis"><svg class="hub" viewBox="0 0 520 300" role="img" aria-label="One signed mandate, carried by the agent, checked by a bank, a supplier and a support line"><g fill="none" stroke="#C9A45C" stroke-width="2" stroke-linecap="round"><path d="M180 150 C 260 150, 260 50, 340 50"/><path d="M180 150 H340"/><path d="M180 150 C 260 150, 260 250, 340 250"/></g><rect x="10" y="90" width="170" height="120" rx="3" fill="#FBF8F1"/><text x="28" y="124" class="t1">Mandate</text><text x="28" y="150" class="t2">Signed once by</text><text x="28" y="170" class="t2">your customer</text><path d="M28 188 C 50 170, 66 200, 90 182 S 130 176, 160 186" fill="none" stroke="#7A5B22" stroke-width="2" stroke-linecap="round"/><g fill="#171A22" stroke="#2A2F3B"><rect x="340" y="20" width="170" height="60" rx="3"/><rect x="340" y="120" width="170" height="60" rx="3"/><rect x="340" y="220" width="170" height="60" rx="3"/></g><g class="t3"><text x="358" y="46">A bank</text><text x="358" y="146">A supplier</text><text x="358" y="246">A support line</text></g><g class="t4"><text x="358" y="66">checks before paying</text><text x="358" y="166">checks before ordering</text><text x="358" y="266">checks before talking</text></g></svg></div></div></section><section class="block"><div class="wrap two"><h2>What you get</h2><div class="prose"><p>Your customer signs one mandate for one agent with a passkey. The agent carries it to the bank, supplier or company it deals with, and that side can check it without calling you.</p><p>Your customer can revoke it, and you stop writing separate rules for every counterparty.</p></div></div></section><section class="block"><div class="wrap two"><h2>For payments</h2><div class="prose"><p>The agent signs each payment with its own key and attaches the mandate. The bank’s checker decides. There are worked examples for Stripe Treasury and Increase on GitHub, and an MCP server so an agent can use it as a tool.</p></div></div></section><section class="block"><div class="wrap two"><h2>For agent protocols</h2><div class="prose"><p>Spec 0.6 adds a profile for protocols where an agent proves its own key on each request:</p><ul><li>the agent is bound by key thumbprint</li><li>counterparties are named as domains</li><li>no personal data in what the operator relays</li><li>the person approves a single operation with a passkey</li><li>revocation through a Token Status List</li></ul><p>It is a draft written around payments. Other actions are open work, and we want to do them with real teams.</p></div></div></section><section class="block"><div class="wrap two"><h2>What it does not do</h2><div class="prose"><p>It proves who allowed what. It does not catch a bad decision inside the allowed scope, or a prompt injection that stays within it. And a counterparty has to choose to check it, which most don’t do yet.</p><div class="btns"><a class="btn line" href="/spec">Read the spec</a><a class="btn line" href="/skills.md">Agent guide</a></div></div></div></section><section class="cta"><div class="wrap"><h2>Tell us what your agent does, or what keeps calling you</h2><p>We are early and want to learn from real cases. If it fits, we set up one flow with your team in a test environment, free.</p><div class="btns"><a class="btn gold" href="mailto:ivan.voloshyn@getgleipnir.com">Email Ivan</a><a class="btn ghost" href="/link/">Create a mandate link</a></div></div></section>
+</main>
+<footer class="foot"><div class="wrap foot-in">
+<div><a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 36" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></svg><span>Gleipnir</span></a><p>Vienna, Austria. Part of u:seed at the University of Vienna.</p></div>
+<nav aria-label="Use cases"><h2>Who it helps</h2><a href="/for-banks">Banks and payment providers</a><a href="/for-platforms">Teams building agents</a><a href="/when-agents-call">Teams agents call</a></nav>
+<nav aria-label="Build"><h2>Build</h2><a href="/know-your-agent">Know Your Agent</a><a href="/spec">Specification</a><a href="/link/">Mandate link</a><a href="/demo/">Payment demo</a><a href="/skills.md">Agent guide</a><a href="https://github.com/getgleipnir/agent-mandate">GitHub</a></nav>
+<nav aria-label="Company"><h2>Company</h2><a href="/#team">Team</a><a href="mailto:ivan.voloshyn@getgleipnir.com">Email</a><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a></nav>
+</div></footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

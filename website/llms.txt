@@ -1,0 +1,56 @@
+# Gleipnir
+
+> Gleipnir (getgleipnir.com) makes signed mandates for AI agents, a power of attorney the other side can check. A person or company signs what one agent may do: for whom, toward whom, how much, until when. A bank, payment provider, insurer or call centre can check the signature, the scope and revocation before acting. Company payments are the first and most complete profile (spec 0.6, draft). The mandate link for agents acting for people is experimental. Other uses are open work. No production customers yet.
+
+Pages: /for-banks, /for-platforms, /when-agents-call, /know-your-agent, /spec, /link/, /demo/.
+
+Not to be confused with the Gleipnir desktop app for running AI coding agents (gleipnir.app), which is a separate, unrelated product.
+
+## What it does
+
+- A person with signing authority at a company issues an AI agent a mandate: which legal entity, which agent, limits per transfer and per period, approved payees and accounts, expiry.
+- The agent starts a transfer through its bank's or PSP's API and attaches the mandate.
+- Before execution, the bank or PSP checks with Gleipnir: valid signature, signer's authority, not expired or revoked, amount and payee covered. Result: allow, block, or send to a person.
+- Every decision leaves a signed record for audits and disputes.
+- Gleipnir does not move money, is not a payment rail and never holds funds.
+
+## Why it exists
+
+- Card networks (Visa, Mastercard) built know-your-agent checks for card purchases. Business money mostly moves by bank transfer, where the bank sees a valid API call but not who authorised the agent, for what, and up to how much.
+- AI agents can be tricked, for example by a hidden instruction in an invoice telling them to pay a new company. Verification of Payee checks that an IBAN belongs to the named payee; it does not check that the company authorised its agent to pay that payee. A Gleipnir check does.
+- Payment fraud on transfers is already large: EUR 2.2bn of credit transfer fraud in the EEA in 2024 (EBA/ECB); USD 3.05bn of business email compromise losses reported to the FBI for 2025.
+
+## Who it is for
+
+- Banks and PSPs: a verification API called before executing agent-initiated transfers.
+- Agent and payments platforms: a mandate any bank can check, instead of per-bank controls.
+- Identity providers (KYB providers, registers, vLEI issuers): plug company and signatory credentials into the check.
+
+## How it differs
+
+- A vLEI is not required. The basic check uses what the bank verified at onboarding.
+- Card agent programs: cards only, not bank transfers.
+- Controls inside one payments platform: work only on that platform. A Gleipnir mandate works with any bank or PSP.
+- The mandate format is an open specification (version 0.6 draft, Apache 2.0) with Python and TypeScript reference checkers that pass the same test vectors.
+
+## Status
+
+Early stage. Running today: the open mandate specification 0.6, reference checkers (CLI, HTTP checker with /check, /revoke, /keys) and an MCP server for agents (mandate_scope, request_mandate, attach_mandate, check_payment), plus a live browser demo. No paying customers yet; looking for first pilots with banks, PSPs and agent payment platforms, starting in shadow mode. Part of u:seed, the startup programme of the University of Vienna.
+
+## Team
+
+- Ivan Voloshyn, co-founder and CEO: https://www.linkedin.com/in/ivan-voloshyn-096715225/
+- Tatiana Khokhlova, co-founder (law into machine-checkable rules): https://www.linkedin.com/in/tatiana-khokhlova-1691693a7/
+
+## Links
+
+- Website: https://getgleipnir.com/
+- What Know Your Agent (KYA) means for bank transfers: https://getgleipnir.com/know-your-agent
+- For banks and PSPs: https://getgleipnir.com/for-banks
+- For agent and payment platforms: https://getgleipnir.com/for-platforms
+- Mandate specification overview: https://getgleipnir.com/spec
+- Full specification: https://github.com/getgleipnir/agent-mandate/blob/kya-mandate-spec/spec/mandate.md
+- Live demo (runs in the browser): https://getgleipnir.com/demo/
+- Agent guide (how it works, data shapes, questions to ask): https://getgleipnir.com/skills.md
+- GitHub: https://github.com/getgleipnir/agent-mandate
+- Contact: ivan.voloshyn@getgleipnir.com
