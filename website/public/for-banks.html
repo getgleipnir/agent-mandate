@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For banks and PSPs: know the agent before you send | Gleipnir</title>
+<meta name="description" content="Check before an AI agent’s transfer goes out: who signed off, how much, to whom. Signed proof for disputes and audits.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0C0E13">
+<link rel="canonical" href="https://getgleipnir.com/for-banks">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Gleipnir"><meta property="og:url" content="https://getgleipnir.com/for-banks"><meta property="og:title" content="For banks and PSPs: know the agent before you send | Gleipnir"><meta property="og:description" content="Check before an AI agent’s transfer goes out: who signed off, how much, to whom. Signed proof for disputes and audits."><meta property="og:image" content="https://getgleipnir.com/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="For banks and PSPs: know the agent before you send | Gleipnir"><meta name="twitter:description" content="Check before an AI agent’s transfer goes out: who signed off, how much, to whom. Signed proof for disputes and audits."><meta name="twitter:image" content="https://getgleipnir.com/og-image.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary"><link rel="alternate" type="text/markdown" href="/skills.md" title="Agent guide">
+<link rel="preload" href="/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Gleipnir", "url": "https://getgleipnir.com/", "logo": "https://getgleipnir.com/assets/icons/icon-512.png", "email": "ivan.voloshyn@getgleipnir.com", "description": "A power of attorney for AI agents: a person or company signs what one agent may do, and the other side can check it before acting.", "disambiguatingDescription": "Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app).", "sameAs": ["https://github.com/getgleipnir"]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="wrap top">
+  <a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a>
+  <nav class="nav" aria-label="Main"><a href="/#how">How it works</a><a href="/#who">Who it’s for</a><a href="/know-your-agent">Know Your Agent</a><a href="/link/">Mandate link</a><a href="/demo/">Payment demo</a><a href="/spec">Spec</a></nav>
+  <a class="btn primary sm" href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call <span aria-hidden="true">→</span></a>
+</header>
+<main id="main" class="wrap plain doc"><p class="eyebrow">Banks and payment service providers</p><h1>For banks and PSPs: know the agent before you send</h1><p class="doc-lede">AI agents are starting to send SEPA, ACH and wire transfers through your APIs. Gleipnir gives you one extra check before execution: was this agent authorised by someone who may sign for the company, for this payee and this amount?</p><div class="doc-vis"><div class="tile" aria-hidden="true"><div class="code"><p><span class="c-m">POST</span> /check</p><p class="c-d">{ "mandate": { … signed by K. Berger },</p><p class="c-d">&nbsp;&nbsp;"payment": { "amount": "18400.00",</p><p class="c-d">&nbsp;&nbsp;&nbsp;&nbsp;"payee": "Brenner Stahl AG" } }</p><p class="c-gap"></p><p><span class="c-ok">200</span> { "outcome": <span class="c-ok">"allow"</span>,</p><p class="c-d">&nbsp;&nbsp;"decision": { … signed by the bank } }</p><p class="c-cap">Open-source reference checker. You can run it today.</p></div></div></div><h2>Why now</h2><p>Federal Reserve Governor Waller named “proving that an agent has the authority to pay on the buyer’s behalf” as a question for payments (<a href="https://www.federalreserve.gov/newsevents/speech/files/waller20260929a.pdf" rel="noopener">Sibos 2026</a>). €2.2bn was lost to credit transfer fraud in the EEA in 2024 (<a href="https://www.banque-france.fr/en/press-release/joint-eba-ecb-report-payment-fraud-strong-authentication-remains-effective-fraudsters-are-adapting" rel="noopener">EBA and ECB</a>). A mandate doesn’t stop all of that. It stops an agent paying someone the company never approved.</p>
+
+<h2>What you check</h2>
+<ul>
+<li><b>Signatory authority, from your own records.</b> The power of attorney counts only if it is signed by a person your KYB says may sign for the company, with a key you enrolled for them. Trust never comes from the mandate itself.</li>
+<li><b>Your customer’s account.</b> The debtor account is one you hold for that company.</li>
+<li><b>The agent.</b> The payment is signed by the agent key the mandate names.</li>
+<li><b>Scope.</b> Rail, currency, approved payees, per-payment and per-period limits.</li>
+<li><b>Still valid.</b> Validity window, revocations, optional signed status.</li>
+</ul>
+<p>Ordered checks, each with a reason code. The checker uses its own clock, never one the agent supplies, and it fails closed: a dependency it cannot reach gives escalate, never allow.</p>
+
+<h2>What you get back</h2>
+<ul>
+<li><b>allow</b>: execute. <b>block</b>: do not execute, with the reason. <b>escalate</b>: a person decides, for example over the limit, and signs an override.</li>
+<li>A <b>decision signed with your key</b>, verifiable offline years later: who authorised the payment, what was checked, when.</li>
+<li>Evidence of the payer’s authorisation for disputes and audits, at the point where PSD2 asks whether the payer consented.</li>
+</ul>
+
+<h2>How it fits your stack</h2>
+<ul>
+<li>A reference checker you run yourself: HTTP <code>POST /check</code>, <code>/revoke</code> and <code>/keys</code>. No call to Gleipnir is needed to check a payment.</li>
+<li>Your KYB stays the source of truth for who may sign. Company registers, LEI and vLEI plug in as optional sources.</li>
+<li>ISO 20022: the checked payment maps to pain.001.001.09, with the mandate, payment and decision hashes in <code>SplmtryData</code>.</li>
+<li>Your checker keys are published at <code>/.well-known/gleipnir-checker.json</code> with validity windows.</li>
+<li>We never move money, hold funds or see your customers’ data unless you send it to us.</li>
+</ul>
+
+<h2>Example</h2>
+<pre class="doc-code">POST /check
+{ "mandate": { … signed by K. Berger, CFO },
+  "payment": { "id": "INV-2026-0913", "amount": "49000.00", "currency": "EUR",
+               "payee": { "name": "Kessler Metall GmbH", "account": { "iban": "DE44…2931" } } } }
+
+200 { "outcome": "block", "reasons": ["payee_not_on_mandate"],
+      "decision": { … signed by the bank } }</pre>
+<p class="fine-l">Output of the open-source reference checker with demo data.</p>
+
+<h2>Status</h2>
+<p>Open specification 0.6, Python and TypeScript reference checkers with shared test vectors, and an MCP server for agents, all on <a href="https://github.com/getgleipnir/agent-mandate" rel="noopener">GitHub</a> under Apache 2.0. We are looking for one or two banks or PSPs to run a pilot on outgoing agent transfers, first in shadow mode: you see what the check would have decided, without blocking anything.</p>
+
+<h2>Questions</h2>
+<div class="faq"><details><summary>Does Gleipnir replace our KYB?</summary><p>No. Your KYB is where signatory authority comes from. Gleipnir checks the agent&#x27;s power of attorney against it.</p></details><details><summary>Do payments go through Gleipnir?</summary><p>No. You execute transfers as today. The check runs in your environment before execution.</p></details><details><summary>What happens if the checker cannot reach a system it needs?</summary><p>It returns escalate, never allow. A payment it could not fully check is never allowed.</p></details></div>
+
+<div class="doc-cta"><h2>Test one flow with us, free</h2><p>The check runs next to what you do today, with no access to funds and no effect on your flow.</p><div class="btns spaced"><a class="btn primary" href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call</a><a class="btn line" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Test%20one%20flow">Email Ivan</a></div></div></main>
+<footer class="foot-d">
+  <div class="wrap foot-cols">
+    <div><h4>Product</h4><a href="/#how">How it works</a><a href="/demo/">Live demo</a><a href="/link/">Mandate link</a><a href="/limits">What it doesn’t do</a></div>
+    <div><h4>Who it’s for</h4><a href="/healthcare">Healthcare</a><a href="/insurance">Insurance</a><a href="/collections">Collections</a><a href="/for-banks">Banks and PSPs</a><a href="/for-platforms">Teams building agents</a></div>
+    <div><h4>Developers</h4><a href="/know-your-agent">Know Your Agent</a><a href="/spec">Mandate spec</a><a href="/skills.md">Agent guide</a><a href="https://github.com/getgleipnir/agent-mandate" rel="noopener">GitHub</a></div>
+    <div><h4>Company</h4><a href="/#team">Team</a><a href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call</a><a href="mailto:ivan.voloshyn@getgleipnir.com">Email</a><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a></div>
+  </div>
+  <div class="wrap foot-base"><a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a><span>© 2026 Gleipnir · Vienna, Austria</span></div>
+</footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>
