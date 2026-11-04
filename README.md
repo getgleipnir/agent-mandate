@@ -1,6 +1,6 @@
 # Gleipnir
 
-**Know Your Agent for bank transfers.** A power of attorney for AI agents that any bank can check.
+**A power of attorney for AI agents that any bank can check.**
 
 AI agents are starting to pay supplier invoices by SEPA, ACH, Faster Payments and wire. Gleipnir lets the bank verify, before it executes, that a person who may sign for the company actually allowed this agent to make this payment: from this account, to this payee, up to this amount, until this date. Open spec, Python and TypeScript, Apache-2.0.
 
@@ -48,7 +48,7 @@ Gleipnir does not move money and does not verify identities: the bank (KYB) or a
 ## Quickstart: from nothing to a signed decision
 
 ```bash
-git clone https://github.com/getgleipnir/gleipnir && cd gleipnir && alias g="uv run gleipnir mandate"
+git clone https://github.com/getgleipnir/agent-mandate && cd agent-mandate && alias g="uv run gleipnir mandate"
 for k in signer agent bank; do g keygen -o $k.pem; done
 g issue --id m_ap --company "Nordhafen Logistik GmbH" --country AT --signer-id kberger@nordhafen.at --signer-key signer.pem \
   --agent-id ap-agent --agent-key agent.pem --currency EUR --max-per-payment 25000.00 \
@@ -208,7 +208,7 @@ See [docs/mcp-proxy.md](docs/mcp-proxy.md).
 ### Try it in one minute
 
 ```bash
-git clone https://github.com/getgleipnir/gleipnir && cd gleipnir
+git clone https://github.com/getgleipnir/agent-mandate && cd agent-mandate
 uv run gleipnir demo --open
 ```
 

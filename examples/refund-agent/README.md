@@ -5,8 +5,8 @@ In a hurry? `uv run gleipnir demo --open` from the repo root runs the same scena
 Five minutes, no API keys. A toy support agent issues refunds against a fake payments API. Every refund is recorded with the payments system's real response, checked by reading the refund back, signed, chained and anchored. Then you verify the records as a buyer would, tamper with them, and watch verification fail.
 
 ```bash
-git clone https://github.com/getgleipnir/gleipnir
-cd gleipnir
+git clone https://github.com/getgleipnir/agent-mandate
+cd agent-mandate
 uv sync --all-packages
 cd examples/refund-agent
 
