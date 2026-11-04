@@ -358,3 +358,5 @@ h1,h2{text-wrap:balance}
 .doc-vis .layers small,.doc-vis .ui small{display:block}
 @media(max-width:900px){.top{flex-wrap:wrap;gap:12px}.nav{display:flex;order:3;flex-basis:100%;overflow-x:auto;white-space:nowrap;gap:18px;padding-bottom:4px}}
 .btn:hover{transform:none}
+
+.strip a.mark-w{text-decoration:none}.strip a.mark-w:hover{color:var(--gold-lit)}

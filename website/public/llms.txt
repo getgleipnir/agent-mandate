@@ -2,7 +2,7 @@
 
 > Gleipnir (getgleipnir.com) is a power of attorney for AI agents. A person or company signs what one agent may do: for whom, toward whom, how much, until when. A bank, payment provider, insurer or call centre can check the signature, the scope and revocation before acting. Company payments are the most complete profile (spec 0.6, draft). The mandate link for agents acting for people is experimental. Other uses are open work. No production customers yet. What it does not do: https://getgleipnir.com/limits
 
-Pages: /for-banks, /for-platforms, /when-agents-call, /know-your-agent, /limits, /spec, /link/, /demo/.
+Pages: /healthcare, /insurance, /collections, /for-banks, /for-platforms, /when-agents-call, /know-your-agent, /limits, /spec, /link/, /demo/.
 
 Not to be confused with the Gleipnir desktop app for running AI coding agents (gleipnir.app), which is a separate, unrelated product.
 

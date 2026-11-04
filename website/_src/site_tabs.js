@@ -11,13 +11,6 @@
   if (!tabsEl) return;
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var S = [
-    { n: 'Pay a supplier', top: 'payment 7Q-20418 · before it is sent', who: 'Check as the bank',
-      rows: [['company', 'Nordhafen Logistik GmbH'], ['AI agent', 'ap-agent v2 · pays suppliers'], ['signed by', 'K. Berger · may sign for the company'], ['limit', '€25,000 per payment'], ['payment', '€18,400.00 · SEPA'], ['to', 'Brenner Stahl AG'], ['IBAN', 'AT61 1904 3002 3457 3201']],
-      steps: ['Signature is real', 'K. Berger may sign for this company', 'Still valid: not expired, not switched off', 'Payee is on the mandate', 'Amount is within the €25,000 limit'],
-      ok: ['Allowed. The bank sends the payment.', 'allowed'],
-      alt: [{ l: 'Pay someone new', u: 'New payee (undo)', edit: { 5: 'Kessler Metall GmbH', 6: 'DE44 5001 0517 5407 3249 31' }, step: 3, bad: 'Kessler Metall GmbH was never approved', v: 'Blocked. A new payee needs a new signature.', b: 'blocked' },
-            { l: 'Raise to €48,000', u: 'Raised to €48,000 (undo)', edit: { 4: '€48,000.00 · SEPA' }, step: 4, bad: 'Amount is over the €25,000 limit', v: 'Sent to a person. Over the limit the company set.', b: 'to a person' }],
-      note: '<b>Works today</b> with the open-source checker, in test setups.' },
     { n: 'Settle a debt', top: 'call with a collector · before it goes on', who: 'Check as the collector',
       rows: [['for', 'Jane Doe'], ['AI agent', 'Acme Assistant'], ['signed by', 'Jane Doe · as typed by the signer'], ['toward', 'Midwest Recovery Services'], ['may', 'Agree to a plan up to $200 a month'], ['the agent asks', 'A plan of $150 a month']],
       steps: ['Signature is real', 'The mandate names this company', 'Not expired, not revoked', 'The request is within what she signed'],
@@ -36,7 +29,14 @@
       steps: ['Signature is real', 'The agent holds the key named on the mandate', 'The mandate names this domain', 'Not expired, not revoked', 'The price is within the limit'],
       ok: ['Allowed. The airline makes the change.', 'allowed'],
       alt: [{ l: 'Upgrade for $900', u: 'Upgrade for $900 (undo)', edit: { 5: 'Business class, $900 extra' }, step: 4, bad: '$900 is over the $70 limit', v: 'Goes to Mara. She can approve this one change.', b: 'to a person' }],
-      note: '<b>Draft:</b> the agent protocol profile in spec 0.6.' }
+      note: '<b>Draft:</b> the agent protocol profile in spec 0.6.' },
+    { n: 'Pay a supplier', top: 'payment 7Q-20418 · before it is sent', who: 'Check as the bank',
+      rows: [['company', 'Nordhafen Logistik GmbH'], ['AI agent', 'ap-agent v2 · pays suppliers'], ['signed by', 'K. Berger · may sign for the company'], ['limit', '€25,000 per payment'], ['payment', '€18,400.00 · SEPA'], ['to', 'Brenner Stahl AG'], ['IBAN', 'AT61 1904 3002 3457 3201']],
+      steps: ['Signature is real', 'K. Berger may sign for this company', 'Still valid: not expired, not switched off', 'Payee is on the mandate', 'Amount is within the €25,000 limit'],
+      ok: ['Allowed. The bank sends the payment.', 'allowed'],
+      alt: [{ l: 'Pay someone new', u: 'New payee (undo)', edit: { 5: 'Kessler Metall GmbH', 6: 'DE44 5001 0517 5407 3249 31' }, step: 3, bad: 'Kessler Metall GmbH was never approved', v: 'Blocked. A new payee needs a new signature.', b: 'blocked' },
+            { l: 'Raise to €48,000', u: 'Raised to €48,000 (undo)', edit: { 4: '€48,000.00 · SEPA' }, step: 4, bad: 'Amount is over the €25,000 limit', v: 'Sent to a person. Over the limit the company set.', b: 'to a person' }],
+      note: '<b>Works today</b> with the open-source checker, in test setups.' }
   ];
   var rec = document.getElementById('rec'), list = document.getElementById('checks'), verdict = document.getElementById('verdict'), badge = document.getElementById('badge'), top = document.getElementById('card-top-t'), acts = document.getElementById('card-actions'), note = document.getElementById('card-note');
   var cur = 0, on = -1, timers = [];
