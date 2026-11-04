@@ -57,3 +57,7 @@
 }
 .demo-foot{padding:0 0 28px}
 .demo-foot .foot-base{margin-top:0}
+
+/* align with the new site */
+.brand{letter-spacing:0;font-size:1.25rem}.btn{border-radius:6px}.btn:hover{transform:none}.demo-steps li{border-radius:4px}.demo-bank,.card{border-radius:3px}.eyebrow{text-transform:none;letter-spacing:0;font-size:.95rem;color:var(--soft)}.demo-bank-h{text-transform:none;letter-spacing:0;font-size:.95rem}
+@media(max-width:900px){.top{flex-wrap:wrap}.nav{display:flex;order:3;flex-basis:100%;overflow-x:auto;white-space:nowrap;gap:18px}}

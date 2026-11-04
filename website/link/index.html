@@ -5,18 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mandate link</title>
 <meta name="description" content="Sign what an AI agent may do on your behalf, and get a link anyone it calls can check in seconds. Nothing is uploaded.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <link rel="stylesheet" href="link.css">
 <script src="link.js" defer></script>
+<script src="example.js" defer></script>
 </head>
 <body>
+<header class="gbar"><div><a class="g" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 36" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></svg><span>Gleipnir</span></a><small><a href="/when-agents-call">How this works</a></small></div></header>
 <main>
   <span class="experimental">Experimental</span>
   <h1>Mandate link</h1>
   <p class="lede">An AI agent calls a company for you: a debt collector, an insurer, your bank. Say here what it may do, sign it, and give the agent the link. Whoever it calls opens the link and sees, in seconds, what you allowed and that it has not been changed.</p>
   <p class="private">Nothing is uploaded and this page makes no network requests. The whole signed mandate is inside the link, after the #. The other side sees your name as you type it here: the link does not prove who you are.</p>
 
+  <button type="button" class="exbtn" id="example">Fill in an example</button>
   <form id="form" novalidate>
     <h2>Who the agent acts for</h2>
     <div class="field">

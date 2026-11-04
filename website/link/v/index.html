@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Check an agent's mandate</title>
 <meta name="description" content="Check what an AI agent was allowed to do, and that the mandate was not changed. The check runs in your browser.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https:; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <link rel="stylesheet" href="check.css">
 <script src="check.js" defer></script>
 </head>
 <body>
+<header class="gbar"><div><a class="g" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 36" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></svg><span>Gleipnir</span></a><small><a href="/when-agents-call">How this works</a></small></div></header>
 <main>
   <h1>Agent mandate check <span class="tag none">Experimental</span></h1>
 

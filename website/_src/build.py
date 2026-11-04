@@ -89,8 +89,10 @@ V_SPEC="""<div class="term"><p class="c">A mandate, shortened</p><pre>{
 V_CHAIN='<div class="chain"><div>Mandate<small>signed by a person</small></div><div>Payment<small>signed by the agent</small></div><div>Decision<small>signed by the checker</small></div></div>'
 V_GAP='<div class="incoming"><p class="inc-h">Incoming call</p><dl><div><dt>Is it a bot?</dt><dd class="y">Likely yes</dd></div><div><dt>Who sent it?</dt><dd class="n">Unknown</dd></div><div><dt>What may it do?</dt><dd class="n">Unknown</dd></div></dl></div>'
 
-def cta(h='Tell us what your agent does, or what keeps calling you',p='We are early and want to learn from real cases. If it fits, we set up one flow with your team in a test environment, free.'):
-    return f'<section class="cta"><div class="wrap"><h2>{h}</h2><p>{p}</p><div class="btns"><a class="btn gold" href="{MAIL}">Email Ivan</a><a class="btn ghost" href="/link/">Create a mandate link</a></div></div></section>'
+BOOK=None  # Ivan's own booking link, when he has one
+def cta(h='We test one of your flows with you, free',p='Shadow mode: the check runs next to your flow, with no access to funds and no effect on what you do today. We are early and want to learn from real cases.'):
+    book=f'<a class="btn ghost" href="{BOOK}">Book 20 minutes</a>' if BOOK else ''
+    return f'<section class="cta"><div class="wrap"><h2>{h}</h2><p>{p}</p><div class="btns"><a class="btn gold" href="{MAIL}?subject=Test%20one%20flow">Email Ivan</a>{book}<a class="btn ghost" href="/link/">Create a mandate link</a></div></div></section>'
 
 CASES=[
  ('pay','Pay a supplier','Nordhafen Logistik GmbH','K. Berger, may sign for the company','ap-agent','Brenner Stahl AG and other approved suppliers',['Pay approved suppliers','Up to €25,000 per payment'],'31 Dec 2026',
@@ -156,7 +158,7 @@ home=f'''<section class="hero"><div class="wrap hero-in">
 <div class="hero-d"><div class="tabs" role="tablist" aria-label="Example use cases">{tabs}</div>{panels}<p class="made-up">Examples with made-up names. Nothing is sent.</p></div>
 </div></section>
 <section class="gap"><div class="wrap gap-in"><div><p class="big">The other side can often tell it’s a bot. It still can’t tell who sent it, or what it’s allowed to do.</p>
-<p class="gap-s">So banks, insurers and call centres block agents, or fall back on a person at each step. Some health plans <a href="https://www.infinitus.ai/blog/payors-are-blocking-ai-agent-calls-what-does-that-mean-for-infinitus/">already refuse AI agent calls</a>. A US Federal Reserve governor called proving an agent’s authority the new question for payments.</p></div>{V_GAP}</div></section>
+<p class="gap-s">So banks, insurers and call centres block agents, or fall back on a person at each step. Some health plans <a href="https://www.infinitus.ai/blog/payors-are-blocking-ai-agent-calls-what-does-that-mean-for-infinitus/">already refuse AI agent calls</a>. <a href="https://www.federalreserve.gov/newsevents/speech/files/waller20260929a.pdf">Federal Reserve Governor Waller</a> named proving an agent’s authority as a new question for payments.</p></div>{V_GAP}</div></section>
 <section class="how" id="how"><div class="wrap"><h2>How it works</h2><ol class="steps">{steps}</ol></div></section>
 <section class="uses" id="uses"><div class="wrap"><h2>Where it applies</h2><p class="sub">The same signed mandate, at different stages. We say plainly how far each one is.</p>
 <div class="tbl"><table><thead><tr><th scope="col">Use case</th><th scope="col">What the agent does</th><th scope="col">Who checks</th><th scope="col">Where it stands</th></tr></thead><tbody>{rows}</tbody></table></div></div></section>
@@ -174,7 +176,7 @@ def sub(h,lede,sections,close=None,vis=''):
 page('for-banks.html','For banks and payment providers | Gleipnir','Check before an AI agent’s transfer goes out: who signed off, how much, to whom. Signed proof for disputes and audits.',sub('For banks and payment providers','An AI agent starts a transfer. Your API sees a valid call. One check tells you whether someone who may sign for the company allowed it.',[
 ('What the check does','<p>The mandate says which agent, from which accounts, to which payees, how much and until when. It is signed by a signatory, alone or jointly.</p><p>Before you execute, the checker verifies the signatures against your own KYB records, checks revocation and limits, and signs its answer. That record works as proof later.</p>'+V_OUT),
 ('Why the bank’s records','<p>Trust comes from what you already know: your KYB and the keys you enrolled for each signatory. An LEI or vLEI is optional, for cross-bank cases. The mandate alone never makes someone a signatory.</p><p>A changed bank account on a known payee is blocked. That is the scam agents fall for first.</p>'),
-('Why now','<blockquote>“…proving that an agent has the authority to pay on the buyer’s behalf.”<cite>Governor Christopher Waller, Federal Reserve, Sibos 2026, on the new question for payments</cite></blockquote><p>€2.2bn was lost to credit transfer fraud in the EEA in 2024 (EBA and ECB). Businesses reported $3.05bn in email payment fraud to the FBI for 2025 (IC3). A mandate does not catch all of that. It does stop an agent paying someone the company never approved.</p>'),
+('Why now','<blockquote>“…proving that an agent has the authority to pay on the buyer’s behalf.”<cite><a href="https://www.federalreserve.gov/newsevents/speech/files/waller20260929a.pdf">Governor Christopher Waller, Federal Reserve, Sibos 2026</a></cite></blockquote><p>€2.2bn was lost to credit transfer fraud in the EEA in 2024 (<a href="https://www.banque-france.fr/en/press-release/joint-eba-ecb-report-payment-fraud-strong-authentication-remains-effective-fraudsters-are-adapting">EBA and ECB</a>). Businesses reported $3.05bn in email payment fraud to the FBI for 2025 (IC3). A mandate does not catch all of that. It does stop an agent paying someone the company never approved.</p>'),
 ('How you try it','<p>Shadow mode: the check runs next to your flow, on test data or copies. It has no access to funds and no effect on your payments. You run the open-source checker yourself, or use a hosted test setup.</p><p>It maps to ISO 20022 pain.001, and Python and TypeScript checkers pass the same test vectors. Nobody runs it in production yet.</p><div class="btns"><a class="btn line" href="/demo/">See a payment checked</a><a class="btn line" href="/spec">Read the spec</a></div>')],vis=V_BANK))
 
 page('for-platforms.html','For teams building AI agents | Gleipnir','Give your agent a permission the other side can check, across banks, companies and protocols. Open spec, checkers and MCP server.',sub('For teams building agents','Your agent gets stopped because nobody can tell who sent it. Limits inside your own product don’t help once the agent leaves it.',[
@@ -232,3 +234,42 @@ l=open(f'{OUT}/llms.txt').read().replace('specification 0.4','specification 0.6'
 k=open(f'{OUT}/skills.md').read().replace("judge whether it fits their payment flow.","judge whether it fits what their agent does. Company payments are the most complete use case and the rest of this guide covers them. For agents acting toward call centres, insurers or support teams, see /when-agents-call: the mandate link there is experimental.").replace('the next step is a free design-partner pilot: one payment flow in a sandbox','the next step is a free test with us: one flow in a test environment')
 open(f'{OUT}/skills.md','w').write(k)
 open(f'{OUT}/netlify.toml','w').write('[build]\n  publish = "."\n')
+
+# og, indexnow, skills
+shutil.copy(f'{HERE}/og-image.png',f'{OUT}/og-image.png')
+key=open(f'{HERE}/indexnow.key').read().strip(); open(f'{OUT}/{key}.txt','w').write(key)
+shutil.copy(f'{HERE}/skills_body.md',f'{OUT}/skills.md')
+# demo: old styles kept for its widgets, new header
+leg=open(f'{SRC}/assets/site.css').read().replace('url("fonts/','url("/assets/fonts/'); open(f'{OUT}/demo/legacy.css','w').write(leg)
+d=open(f'{OUT}/demo/index.html').read()
+d=d.replace('href="/assets/site.css"','href="/demo/legacy.css"')
+nav=''.join(f'<a href="{h}">{t}</a>' for h,t in NAV)
+d=re.sub(r'<nav class="nav".*?</nav>',f'<nav class="nav" aria-label="Main">{nav}</nav>',d,flags=re.S)
+d=d.replace('GLEIPNIR','Gleipnir').replace(' <span aria-hidden="true">→</span>','').replace('Start the demo →','Start the demo').replace('<p class="eyebrow" id="eyebrow">Live demo</p>','<p class="eyebrow" id="eyebrow">Payment demo</p>').replace('?subject=Gleipnir%20pilot','?subject=Test%20one%20flow').replace('© 2026 Gleipnir · Vienna, Austria · <a href="/imprint">Imprint</a> · <a href="/privacy">Privacy</a>','Vienna, Austria. <a href="/imprint">Imprint</a>. <a href="/privacy">Privacy</a>.').replace('<title>Live demo · Gleipnir</title>','<title>Payment demo | Gleipnir</title>')
+open(f'{OUT}/demo/index.html','w').write(d)
+open(f'{OUT}/demo/demo.css','a').write("""
+/* align with the new site */
+.brand{letter-spacing:0;font-size:1.25rem}.btn{border-radius:6px}.btn:hover{transform:none}.demo-steps li{border-radius:4px}.demo-bank,.card{border-radius:3px}.eyebrow{text-transform:none;letter-spacing:0;font-size:.95rem;color:var(--soft)}.demo-bank-h{text-transform:none;letter-spacing:0;font-size:.95rem}
+@media(max-width:900px){.top{flex-wrap:wrap}.nav{display:flex;order:3;flex-basis:100%;overflow-x:auto;white-space:nowrap;gap:18px}}
+""")
+# link pages
+THEME="""
+/* brand */
+@font-face{font-family:"Newsreader";src:url("/assets/fonts/newsreader-latin-wght-normal.woff2") format("woff2");font-weight:200 800;font-display:swap}
+@font-face{font-family:"Schibsted Grotesk";src:url("/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2") format("woff2");font-weight:400 900;font-display:swap}
+:root:root:root{color-scheme:light;--paper:#F4F2EE;--sheet:#FBF8F1;--ink:#14161C;--muted:#4A4D56;--rule:#DFDBD3;--steel:#7A5B22;--ok:#176B41;--bad:#A93A25;--warn:#7E5412;--focus:#C9A45C}
+body{font-family:"Schibsted Grotesk",system-ui,sans-serif}
+h1{font-family:"Newsreader",Georgia,serif;font-weight:400;font-size:2.6rem;line-height:1.08;letter-spacing:-.012em}
+.gbar{background:#0C0E13;color:#F2EDE3;padding:16px}.gbar div{max-width:42rem;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.gbar a{color:inherit;text-decoration:none}.gbar .g{display:inline-flex;gap:10px;align-items:center;font:500 1.25rem "Newsreader",Georgia,serif}.gbar svg{width:24px;height:26px;color:#C9A45C}.gbar small{font-size:.9rem;opacity:.8}
+.verdict{background:var(--sheet)!important}
+.exbtn{appearance:none;background:none;border:1px solid var(--ink);color:var(--ink);border-radius:6px;padding:9px 15px;font:600 .92rem inherit;cursor:pointer;margin:0 0 1rem}
+"""
+BAR=f'<header class="gbar"><div><a class="g" href="/" aria-label="Gleipnir home">{MARK}<span>Gleipnir</span></a><small><a href="/when-agents-call">How this works</a></small></div></header>'
+for f,c in [('link/index.html','link/link.css'),('link/v/index.html','link/v/check.css')]:
+    h=open(f'{OUT}/{f}').read().replace("img-src 'self' data:;","img-src 'self' data:; font-src 'self';").replace('<body>','<body>\n'+BAR)
+    if f=='link/index.html':
+        h=h.replace('<form id="form" novalidate>','<button type="button" class="exbtn" id="example">Fill in an example</button>\n  <form id="form" novalidate>').replace('<script src="link.js" defer></script>','<script src="link.js" defer></script>\n<script src="example.js" defer></script>')
+        shutil.copy(f'{HERE}/example.js',f'{OUT}/link/example.js')
+    open(f'{OUT}/{f}','w').write(h); open(f'{OUT}/{c}','a').write(THEME)
+sm=open(f'{OUT}/sitemap.xml').read(); open(f'{OUT}/sitemap.xml','w').write(sm)
