@@ -6,12 +6,14 @@ import { describe, expect, it } from "vitest";
 import { b64uDecode, b64uEncode, concatBytes, utf8 } from "../src/bytes.js";
 import { encodeP256PublicKey, p256SpkiFromScalar } from "../src/crypto.js";
 import {
-  decodeLink, draftLink, encodeLink, linkCode, linkHash, linkPasskeyChallenge, readStatus, signLinkEd25519, verifyLink,
+  attachP256Signature, decodeLink, draftLink, encodeLink, linkCode, linkHash, linkMessage, linkPasskeyChallenge, MAX_ENCODED,
+  readStatus, signLinkEd25519, statusUrlProblem, textWarning, validTimestamp, verifyLink,
 } from "../src/link.js";
 import type { JsonDict } from "../src/py.js";
 
 const SEED = new Uint8Array(32).fill(7);
 const NOW = new Date("2026-11-04T12:00:00Z");
+const P256_N = p256.Point.CURVE().n;
 
 function draft(extra: Partial<Parameters<typeof draftLink>[0]> = {}): JsonDict {
   return draftLink({
@@ -101,23 +103,121 @@ describe("mandate link", () => {
     expect(verifyLink(https, NOW).status).toBe("valid");
   });
 
-  it("verifies a passkey (WebAuthn, P-256) signature over the link's challenge", () => {
+  /** A passkey-signed link, with knobs to break one thing at a time. */
+  function passkeyLink(o: { flags?: number; rpHash?: string; origin?: string; rpId?: string; type?: string;
+    crossOrigin?: boolean; highS?: boolean; extraSigField?: boolean } = {}): JsonDict {
     const scalar = new Uint8Array(32).fill(3);
-    const origin = "https://getgleipnir.com";
-    const rpId = "getgleipnir.com";
+    const rpId = o.rpId ?? "getgleipnir.com";
+    const origin = o.origin ?? "https://getgleipnir.com";
     const l = draft({ signer: { public_key: encodeP256PublicKey(p256SpkiFromScalar(scalar)), rp_id: rpId, origin } });
-    const clientData = utf8(JSON.stringify({ type: "webauthn.get", challenge: b64uEncode(linkPasskeyChallenge(l)), origin }));
-    const auth = concatBytes(sha256(utf8(rpId)), new Uint8Array([0x05, 0, 0, 0, 1])); // UP | UV, counter 1
-    const der = p256.sign(sha256(concatBytes(auth, sha256(clientData))), scalar, { format: "der", prehash: false });
-    const sig = { type: "webauthn", credential_id: "Y3JlZA", authenticator_data: b64uEncode(auth),
-      client_data_json: b64uEncode(clientData), signature: b64uEncode(der) };
-    const signed: JsonDict = { ...l, sig };
+    const cd: JsonDict = { type: o.type ?? "webauthn.get", challenge: b64uEncode(linkPasskeyChallenge(l)), origin };
+    if (o.crossOrigin) cd.crossOrigin = true;
+    const clientData = utf8(JSON.stringify(cd));
+    const auth = concatBytes(sha256(utf8(o.rpHash ?? rpId)), new Uint8Array([o.flags ?? 0x05, 0, 0, 0, 1]));
+    let sig = p256.sign(sha256(concatBytes(auth, sha256(clientData))), scalar, { format: "compact", prehash: false });
+    let parsed = p256.Signature.fromBytes(sig, "compact");
+    if (o.highS) parsed = new p256.Signature(parsed.r, P256_N - parsed.s);
+    const out: JsonDict = { type: "webauthn", credential_id: "Y3JlZA", authenticator_data: b64uEncode(auth),
+      client_data_json: b64uEncode(clientData), signature: b64uEncode(parsed.toBytes("der")) };
+    if (o.extraSigField) out.note = "x";
+    return { ...l, sig: out };
+  }
+
+  it("verifies a passkey (WebAuthn, P-256) signature over the link's challenge", () => {
+    const signed = passkeyLink();
     const r = verifyLink(encodeLink(signed), NOW);
     expect(r.status, r.problem ?? "").toBe("valid");
     expect(r.keyId).toMatch(/^k_p256_/);
     expect(verifyLink({ ...signed, actions: ["anything"] }, NOW).status).toBe("invalid_signature");
-    expect(verifyLink({ ...signed, signer: { ...(signed.signer as JsonDict), origin: "https://evil.example" } }, NOW).status)
-      .toBe("invalid_signature");
+  });
+
+  it("refuses broken passkey signatures", () => {
+    const cases: [string, Parameters<typeof passkeyLink>[0], RegExp][] = [
+      ["no user verification", { flags: 0x01 }, /user verification/],
+      ["no user presence", { flags: 0x04 }, /user presence/],
+      ["wrong rpIdHash", { rpHash: "evil.example.com" }, /rpIdHash/],
+      ["origin outside rp_id", { origin: "https://evil.example.com" }, /declared passkey domain/],
+      ["cross-origin frame", { crossOrigin: true }, /cross-origin/],
+      ["wrong clientData type", { type: "webauthn.create" }, /webauthn.get/],
+      ["high S", { highS: true }, /low S/],
+    ];
+    for (const [name, opts, why] of cases) {
+      const r = verifyLink(passkeyLink(opts), NOW);
+      expect(r.status, name).toBe("invalid_signature");
+      expect(r.problem, name).toMatch(why);
+    }
+    expect(verifyLink(passkeyLink({ extraSigField: true }), NOW).problem).toMatch(/sig: unknown field/);
+    // rp_id and origin are declared by the signer: a software key claiming any domain still verifies (H1).
+    const claimed = passkeyLink({ rpId: "bank.example.com", origin: "https://bank.example.com" });
+    expect(verifyLink(claimed, NOW).status).toBe("valid");
+  });
+
+  it("verifies a P-256 key signature (the signing page's WebCrypto key), low S only", () => {
+    const scalar = new Uint8Array(32).fill(5);
+    const l = draft({ signer: { public_key: encodeP256PublicKey(p256SpkiFromScalar(scalar)) } });
+    const raw = p256.sign(sha256(linkMessage(l)), scalar, { format: "compact", prehash: false });
+    const parsed = p256.Signature.fromBytes(raw, "compact");
+    const high = new p256.Signature(parsed.r, P256_N - parsed.s).toBytes("compact");
+    const signed = attachP256Signature(l, high); // normalised to low S
+    expect(verifyLink(signed, NOW).status).toBe("valid");
+    const highDer = "ecdsa-p256:" + b64uEncode(new p256.Signature(parsed.r, P256_N - parsed.s).toBytes("der"));
+    expect(verifyLink({ ...signed, sig: highDer }, NOW).problem).toMatch(/low S/);
+    expect(verifyLink({ ...signed, actions: ["x"] }, NOW).status).toBe("invalid_signature");
+  });
+
+  it("is not yet valid when issued more than 5 minutes in the future", () => {
+    const signed = signLinkEd25519(draft({ issuedAt: "2026-11-04T12:10:00Z" }), SEED);
+    expect(verifyLink(signed, NOW).status).toBe("not_yet_valid");
+    expect(verifyLink(signed, new Date("2026-11-04T12:06:00Z")).status).toBe("valid");
+  });
+
+  it("enforces the action count and the link length", () => {
+    const twelve = Array.from({ length: 12 }, (_, i) => `action ${i}`);
+    expect(verifyLink(signLinkEd25519(draft({ actions: twelve }), SEED), NOW).status).toBe("valid");
+    expect(verifyLink(signLinkEd25519(draft({ actions: [...twelve, "13"] }), SEED), NOW).problem).toMatch(/1 to 12/);
+    expect(verifyLink("A".repeat(MAX_ENCODED + 1), NOW).problem).toMatch(/too long/);
+    // The largest ASCII link (12 actions of 300 characters) fits; the same in a 3-byte script does not.
+    const ascii = encodeLink(signLinkEd25519(draft({ actions: Array.from({ length: 12 }, () => "x".repeat(300)) }), SEED));
+    expect(ascii.length).toBeLessThan(MAX_ENCODED);
+    expect(verifyLink(ascii, NOW).status).toBe("valid");
+    const cjk = encodeLink(signLinkEd25519(draft({ actions: Array.from({ length: 12 }, () => "\u8a9e".repeat(300)) }), SEED));
+    expect(cjk.length).toBeGreaterThan(MAX_ENCODED);
+    expect(verifyLink(cjk, NOW).problem).toMatch(/too long/);
+  });
+
+  it("refuses control, invisible and bidi characters and line breaks in displayed text", () => {
+    for (const bad of ["Jane\u202EeoD", "Jane\u200BDoe", "Jane\nDoe", "Ja\u0007ne", "Jane\u2028Doe", "Ja\uFEFFne", "Jane\u2066Doe\u2069"]) {
+      expect(verifyLink(signLinkEd25519(draft({ principal: { name: bad } }), SEED), NOW).problem, JSON.stringify(bad)).toMatch(/principal/);
+      expect(verifyLink(signLinkEd25519(draft({ actions: [bad] }), SEED), NOW).problem).toMatch(/action/);
+      expect(verifyLink(signLinkEd25519(draft({ agent: { id: "a", name: bad } }), SEED), NOW).problem).toMatch(/agent/);
+      expect(verifyLink(signLinkEd25519(draft({ counterparty: bad }), SEED), NOW).problem).toMatch(/counterparty/);
+    }
+    expect(verifyLink(signLinkEd25519(draft({ principal: { name: "Zoë Müller" } }), SEED), NOW).status).toBe("valid");
+  });
+
+  it("flags mixed-script and non-ASCII names", () => {
+    expect(textWarning("Jane Doe")).toBeNull();
+    expect(textWarning("J\u0430ne Doe")).toMatch(/Latin and Cyrillic/); // Cyrillic a
+    expect(textWarning("Иван Волошин")).toMatch(/non-ASCII/);
+    expect(textWarning("Zoë")).toMatch(/non-ASCII/);
+  });
+
+  it("refuses impossible dates and times", () => {
+    for (const t of ["2026-02-30T12:00:00Z", "2026-12-31T24:00:00Z", "2026-12-31T23:60:00Z", "2026-12-31T23:59:60Z", "2026-13-01T00:00:00Z", "2026-12-31 23:59:59Z"]) {
+      expect(validTimestamp(t), t).toBe(false);
+      expect(verifyLink(signLinkEd25519(draft({ validUntil: t }), SEED), NOW).problem, t).toMatch(/valid_until/);
+    }
+    expect(validTimestamp("2028-02-29T00:00:00Z")).toBe(true);
+  });
+
+  it("accepts only public https status URLs on port 443", () => {
+    for (const u of ["http://status.example.com/s", "https://127.0.0.1/s", "https://[::1]/s", "https://localhost/s",
+      "https://printer.local/s", "https://status.example.com:8443/s", "https://user:pw@status.example.com/s", "https://intranet/s",
+      "https://0x7f000001/s", "https://10.0.0.1/s"]) {
+      expect(statusUrlProblem(u), u).not.toBeNull();
+    }
+    expect(statusUrlProblem("https://status.example.com/l/1")).toBeNull();
+    expect(statusUrlProblem("https://status.example.com:443/l/1")).toBeNull();
   });
 
   it("reads status answers", () => {
