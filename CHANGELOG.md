@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased: mandate spec 0.6 (agent protocol profile)
+
+Additive and optional: only objects that use something new are `0.6`. A 0.6 checker accepts every 0.4 and 0.5 object
+and checks it exactly as before; the 0.4/0.5 vector file is unchanged and the 0.6 vectors are in a file of their own.
+Package versions stay at 0.4.0.
+
+### Added
+
+- **Agent protocol profile** (spec section 14), for agent protocols such as the Personal Agent Protocol (PAP 0.3):
+  - `agent.jkt`: the agent bound by the RFC 7638 JWK thumbprint of its key (as in PAP `cnf.jwk` / DPoP `jkt`). The
+    checker compares it with the key in its context, filled by the company's own protocol layer
+    (`agent_key_mismatch`, step 6a).
+  - `scope.counterparties`: canonical domains, exact match, no wildcards (`counterparty_not_on_mandate`, step 18a).
+  - Pairwise signer ids (`pairwise:…`, no name or role) and a salted `principal_commitment`, confirmed when the
+    context gives the opening (`principal_mismatch`).
+  - `gleipnir/operation_approval/0.6`: the principal signs (passkey, Ed25519 or P-256) the JCS encoding of one
+    revision of one operation (`mandate_hash`, `counterparty`, `operation_id`, `revision`, `terms`, `expires_at`,
+    `approved_at`, optional `agent_jkt`). `Checker.check_operation` / `checkOperation` verifies it against the
+    counterparty's own operation, makes each (counterparty, operation_id) single-use (`operation_replayed`; the same
+    approval again gets the first decision), checks expiry, authority, revocation and status, and signs a
+    `gleipnir/decision/0.6` naming the operation. New codes `operation_approval_invalid`, `operation_malformed`,
+    `operation_mismatch`, `operation_approval_expired`, `operation_replayed`.
+  - `status.status_list {idx, uri}`: IETF Token Status List (draft-ietf-oauth-status-list, JWT form, EdDSA or
+    ES256 by a trusted issuer, ZLIB, 1/2/4/8 bits). INVALID is `mandate_revoked`, SUSPENDED the new
+    `mandate_suspended`; anything the checker cannot confirm is `status_unavailable` (escalate), as for
+    `status_url`; a bank officer's override can waive it for a payment.
+- Python: `check(..., context=)`, `resolve(..., context=)`, `check_operation`, `verify_operation_receipt`,
+  `approve_operation`, `sign_operation_approval`, `operation_approval_digest`, `operation_approval_hash`,
+  `operation_approval_problem`, `operation_problem`, `operation_key`, `jwk_thumbprint`, `jwk_problem`,
+  `public_key_jwk`, `principal_commitment`, `domain_problem`, `status_list_status`, `status_list_token`, `V6`;
+  `Checker(status_list=, status_list_keys=, status_list_max_age=)`; `issue(..., extra=)`. TypeScript: the same in
+  camelCase, `MANDATE_VERSION_06`; `SPEC_VERSION` is `0.6`.
+- Payee approvals and unlisted payees work under 0.6 mandates as under 0.5 (checker, MCP servers, reference server).
+- Vectors: `mandate-vectors-06.json`, 25 payment cases and 24 operation approval cases, plus 68 pinned problem
+  messages, RFC 7638 thumbprints (including RFC 8037 A.3), status list answers and operation keys. Both
+  implementations run them (`test_mandate_v06.py`, `mandate-v06.test.ts`). `npm run interop` now also has each
+  language issue a 0.6 mandate, an operation approval and a status list that the other checks and receipts.
+- Spec: section 14 (profile, PAP mapping), threat model rows and residual risks, section 12, shapes and
+  versioning (13.1), reason codes, Appendix B.
+
+### Changed
+
+- Site bundles (`site/demo/demo.js`, `site/mandate/index.html`) rebuilt from the new checker source.
+
+Tests at the end of this change: pytest 1012 passed (11 skipped, 1 xfailed), vitest 819 passed (2 skipped),
+192 + 49 shared mandate vectors, interop all passed.
+
 ## Unreleased: mandate spec 0.5
 
 Additive: only objects that use something new are `0.5`. A 0.5 checker accepts every 0.4 object and checks it
