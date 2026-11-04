@@ -1,4 +1,6 @@
-# Threat model
+# Threat model (earlier action records)
+
+> This page covers the earlier action-records code. For the mandate format, see [spec/mandate.md, section 11](../spec/mandate.md#11-threat-model).
 
 Who relies on Gleipnir records: the **buyer** of an AI agent (security, risk, audit), their **auditor**, **regulator** or **insurer**. Who produces them: the **vendor** running the agent. The records are useful only if the buyer does not have to trust the vendor's word.
 

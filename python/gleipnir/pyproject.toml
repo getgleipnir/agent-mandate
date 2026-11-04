@@ -24,7 +24,7 @@ temporal = ["temporalio>=1.9"]
 
 [project.urls]
 Homepage = "https://getgleipnir.com"
-Source = "https://github.com/getgleipnir/gleipnir"
+Source = "https://github.com/getgleipnir/agent-mandate"
 
 [project.scripts]
 gleipnir = "gleipnir.cli:main"

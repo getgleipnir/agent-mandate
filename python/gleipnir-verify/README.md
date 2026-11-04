@@ -8,7 +8,7 @@ pipx run gleipnir-verify bundle.zip
 
 It checks every signature, the hash chain (no edits, deletions, reordering or gaps), every segment's Merkle root, anchor receipts, and time coverage. It needs no account, no network and no access to the vendor's systems.
 
-Format: see `spec/` in https://github.com/getgleipnir/gleipnir.
+Format: see `spec/` in https://github.com/getgleipnir/agent-mandate.
 
 It also holds the reference checker for Gleipnir mandates (Know Your Agent for bank transfers): `gleipnir_verify.mandate`
 checks a payment an AI agent started against the mandate a company signatory signed, and returns a signed allow, block

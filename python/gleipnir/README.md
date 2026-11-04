@@ -10,4 +10,4 @@ It also installs `gleipnir mandate`, the command line for Gleipnir mandates (spe
 accepted): keys, mandates, payee approvals, payments, checks as a bank would, overrides, revocations, a reference HTTP
 checker (`serve`) and an MCP server for agents (`mcp`).
 
-See https://github.com/getgleipnir/gleipnir for the quickstart.
+See https://github.com/getgleipnir/agent-mandate for the quickstart.

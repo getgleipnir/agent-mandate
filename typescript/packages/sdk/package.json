@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getgleipnir/gleipnir.git",
+    "url": "git+https://github.com/getgleipnir/agent-mandate.git",
     "directory": "typescript/packages/sdk"
   },
   "homepage": "https://getgleipnir.com",

@@ -277,7 +277,7 @@ def render_html(s: dict[str, Any], *, verify: dict[str, Any], coverage: list[Any
                  "and it cannot show actions that were never recorded: reconcile <code>actions.csv</code> against "
                  "your own system logs using the external ids.</p>")
     parts.append("<p class=foot>Made with Gleipnir, open source under Apache-2.0: "
-                 "<a href='https://github.com/getgleipnir/gleipnir'>github.com/getgleipnir/gleipnir</a></p>")
+                 "<a href='https://github.com/getgleipnir/agent-mandate'>github.com/getgleipnir/agent-mandate</a></p>")
     parts.append("</body></html>")
     return "".join(parts)
 
