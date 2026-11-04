@@ -31,26 +31,25 @@ for (const name of ["verify", "approve"]) {
   });
 }
 
-describe("site/link (mandate links, experimental)", () => {
-  for (const [name, connect] of [["link", "connect-src 'none'"], ["link/v", "connect-src https:"]] as const) {
+describe("site/link (mandate links, experimental; CSP script-src 'self'; style-src 'self')", () => {
+  for (const [name, out, connect] of [["link", "link/link.js", "connect-src 'none'"], ["link/v", "link/v/check.js", "connect-src https:"]] as const) {
     const html = readFileSync(SITE + name + "/index.html", "utf8");
-    const script = /<script type="module">([\s\S]*)<\/script>/.exec(html)?.[1] ?? "";
+    const js = readFileSync(SITE + out, "utf8");
 
-    it(`${name}: one self-contained file, script pinned by hash, ${connect}`, () => {
+    it(`${name}: no inline script, inline style or external origin; ${connect}`, () => {
+      expect(html).not.toMatch(/<script(?![^>]*\bsrc="(link|check)\.js")[^>]*>/);
+      expect(html).not.toMatch(/\sstyle=|<style|\son[a-z]+=/i);
+      expect(html.match(/(?:src|href)="https?:[^"]+"/g) ?? []).toEqual([]);
       const csp = /Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1] ?? "";
-      const hash = "sha256-" + createHash("sha256").update(script, "utf8").digest("base64");
-      expect(csp).toContain(`script-src '${hash}'`);
-      expect(csp).toContain("default-src 'none'");
-      expect(csp).toContain(connect);
-      expect(html).not.toMatch(/<script[^>]+src=|<link[^>]+href=|@import/);
-      expect(script).not.toMatch(/XMLHttpRequest|WebSocket|sendBeacon|EventSource|\.innerHTML\b|eval\(/);
-      if (name === "link") expect(script).not.toMatch(/\bfetch\(/);
+      for (const d of ["default-src 'none'", "script-src 'self'", "style-src 'self'", connect]) expect(csp).toContain(d);
+      expect(js).not.toMatch(/XMLHttpRequest|WebSocket|sendBeacon|EventSource|\.innerHTML\b|eval\(|\.style\b/);
+      if (name === "link") expect(js).not.toMatch(/\bfetch\(/);
     });
 
-    it(`${name}: is up to date with its source (run \`npm run build:site\`)`, async () => {
+    it(`${out} is up to date with site/${name}/src (run \`npm run build:site\`)`, async () => {
       // @ts-expect-error: plain .mjs build script
-      const { buildPage } = await import("../../../scripts/build-site.mjs");
-      expect((await buildPage(name)) === html, `site/${name}/index.html is stale: run \`npm run build:site\``).toBe(true);
+      const { buildScript } = await import("../../../scripts/build-site.mjs");
+      expect((await buildScript(name)) === js, `site/${out} is stale: run \`npm run build:site\``).toBe(true);
     });
   }
 });

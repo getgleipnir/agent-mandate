@@ -60,6 +60,11 @@ function str(x: unknown, max: number): x is string {
   return typeof x === "string" && x.trim().length > 0 && x.length <= max && !HIDDEN.test(x);
 }
 
+/** True when the text has a control or format character (bidi override, zero-width) or a line break. */
+export function hasHiddenCharacters(text: string): boolean {
+  return HIDDEN.test(text);
+}
+
 const SCRIPTS = ["Latin", "Cyrillic", "Greek", "Armenian", "Georgian", "Hebrew", "Arabic", "Devanagari", "Thai", "Han", "Hiragana", "Katakana", "Hangul"];
 const SCRIPT_RES = SCRIPTS.map((s) => [s, new RegExp(`\\p{Script=${s}}`, "u")] as const);
 
@@ -122,9 +127,9 @@ function lowSParts(der: Uint8Array): { r: bigint; s: bigint } | null {
   }
 }
 
-/** A P-256 signature (DER, or raw r||s from WebCrypto) as DER with low S, the only form links accept. */
-export function lowSDer(sig: Uint8Array): Uint8Array {
-  const parsed = sig.length === 64 ? p256.Signature.fromBytes(sig, "compact") : p256.Signature.fromBytes(sig, "der");
+/** A P-256 signature (DER from WebAuthn, or raw r||s from WebCrypto) as DER with low S, the only form links accept. */
+export function lowSDer(sig: Uint8Array, format: "der" | "compact"): Uint8Array {
+  const parsed = p256.Signature.fromBytes(sig, format);
   const s = parsed.s > P256_N / 2n ? P256_N - parsed.s : parsed.s;
   return new p256.Signature(parsed.r, s).toBytes("der");
 }
@@ -266,12 +271,12 @@ export function signLinkEd25519(draft: JsonDict, seed: Uint8Array): JsonDict {
 }
 
 /**
- * Attach a P-256 key signature (DER or raw r||s, as WebCrypto returns it) over linkMessage(draft). The draft's
+ * Attach a P-256 key signature (raw r||s, as WebCrypto returns it) over linkMessage(draft). The draft's
  * signer.public_key must already be the matching "ecdsa-p256:" key.
  */
 export function attachP256Signature(draft: JsonDict, sig: Uint8Array): JsonDict {
   const l = withoutSig(draft);
-  l.sig = "ecdsa-p256:" + b64uEncode(lowSDer(sig));
+  l.sig = "ecdsa-p256:" + b64uEncode(lowSDer(sig, "compact"));
   return l;
 }
 

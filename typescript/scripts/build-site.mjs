@@ -5,8 +5,10 @@
  * - site/verify/index.html: the browser verifier;
  * - site/approve/index.html: passkey approval of one exact agent action (no backend);
  * - site/mandate/index.html: a signatory reviews a mandate and signs it with a passkey (no backend);
- * - site/link/index.html and site/link/v/index.html: mandate links (experimental, docs/mandate-link.md): sign what an
- *   agent may do toward a third party, and check such a link. The check page is the one page allowed to fetch (https only), for the link's own status_url;
+ * - site/link/link.js and site/link/v/check.js: mandate links (experimental, docs/mandate-link.md): sign what an agent
+ *   may do toward a third party, and check such a link. Like the demo, separate files next to hand-written HTML and
+ *   CSS, so they work under getgleipnir.com's script-src 'self'; style-src 'self'. Classic scripts (IIFE), so they
+ *   also load from disk. The check page is the one page allowed to fetch (https only), for the link's own status_url;
  * - site/demo/demo.js: the getgleipnir.com/demo walkthrough. Unlike the others it is a separate file next to a
  *   hand-written index.html, because getgleipnir.com's CSP is script-src 'self' (no inline scripts).
  *
@@ -25,15 +27,17 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const PAGES = ["verify", "approve", "mandate", "link", "link/v"];
+export const PAGES = ["verify", "approve", "mandate"];
+/** Pages served as hand-written HTML + CSS + one external script: [source dir, output file], under site/. */
+export const SCRIPTS = [["link", "link/link.js"], ["link/v", "link/v/check.js"]];
 
 /** A page's bundled script, built from site/<name>/src/app.js (deterministic). */
-export async function bundle(name) {
+export async function bundle(name, format = "esm") {
   const site = join(HERE, "../../site", name);
   const result = await build({
     entryPoints: [join(site, "src/app.js")],
     bundle: true,
-    format: "esm",
+    format,
     platform: "browser",
     target: "es2022",
     minify: true,
@@ -48,6 +52,11 @@ export async function bundle(name) {
 /** site/demo/demo.js, built from site/demo/src/app.js. */
 export async function buildDemo() {
   return (await bundle("demo")) + "\n";
+}
+
+/** site/<out>, an external classic script built from site/<name>/src/app.js. */
+export async function buildScript(name) {
+  return (await bundle(name, "iife")) + "\n";
 }
 
 /** A page's HTML, built from its sources (deterministic). */
@@ -66,6 +75,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const out = await buildPage(name);
     writeFileSync(join(HERE, "../../site", name, "index.html"), out);
     console.log(`wrote site/${name}/index.html (${(out.length / 1024).toFixed(0)} KiB)`);
+  }
+  for (const [name, out] of SCRIPTS) {
+    const js = await buildScript(name);
+    writeFileSync(join(HERE, "../../site", out), js);
+    console.log(`wrote site/${out} (${(js.length / 1024).toFixed(0)} KiB)`);
   }
   const demo = await buildDemo();
   writeFileSync(join(HERE, "../../site/demo/demo.js"), demo);
