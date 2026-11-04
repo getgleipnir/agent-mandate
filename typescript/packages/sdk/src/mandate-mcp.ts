@@ -24,6 +24,7 @@ import {
   InMemoryLedger,
   MANDATE_VERSION,
   MANDATE_VERSION_05,
+  MANDATE_VERSION_06,
   MAX_APPROVALS,
   SCHEMES,
   account,
@@ -283,7 +284,7 @@ export class MandateTools {
     const policy = controlled ? (sc.unlisted_payees ?? "block") : "";
     const unlisted = policy === "block" ? "blocked: only listed and approved payees can be paid"
       : policy === "escalate" ? "waits for a person to approve it (new_payee)" : "allowed (no payee list)";
-    const approved = versionOf(m, "mandate") === MANDATE_VERSION_05 ? this.approvals(m).map((a) => a.payee) : [];
+    const approved = [MANDATE_VERSION_05, MANDATE_VERSION_06].includes(versionOf(m, "mandate")) ? this.approvals(m).map((a) => a.payee) : [];
     return {
       mandate: m.id, company: (m.company as J | undefined)?.name, agent: (m.agent as J | undefined)?.id,
       currency: sc.currency, max_per_payment: sc.max_per_payment, max_per_period: sc.max_per_period ?? null,
@@ -345,7 +346,7 @@ export class MandateTools {
   async check_payment(a: J): Promise<J> {
     const m = this.mandate();
     let approvals: J[] | undefined;
-    if ((this.o.payeeApprovals ?? []).length && versionOf(m, "mandate") === MANDATE_VERSION_05 && isObj(a.payment)) {
+    if ((this.o.payeeApprovals ?? []).length && [MANDATE_VERSION_05, MANDATE_VERSION_06].includes(versionOf(m, "mandate")) && isObj(a.payment)) {
       const payee = a.payment.payee;
       const acc = isObj(payee) ? JSON.stringify(payee.account, Object.keys((payee.account ?? {}) as J).sort()) : null;
       approvals = this.approvals(m).filter((x) => {
