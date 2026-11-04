@@ -1,6 +1,8 @@
 # Gleipnir
 
-**A power of attorney for AI agents that any bank can check.**
+**A power of attorney for AI agents.** When an agent acts for someone, it carries a signed mandate: who sent it, what it may do, until when. The other side checks it before acting, and the signer can revoke it.
+
+The first profile is bank transfers: a bank or PSP checks the mandate before it executes a payment. Spec 0.6 adds a profile for agent protocols, and mandate links are experimental. Consumer and general non-payment use is open work.
 
 AI agents are starting to pay supplier invoices by SEPA, ACH, Faster Payments and wire. Gleipnir lets the bank verify, before it executes, that a person who may sign for the company actually allowed this agent to make this payment: from this account, to this payee, up to this amount, until this date. Open spec, Python and TypeScript, Apache-2.0.
 
