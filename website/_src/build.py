@@ -89,9 +89,9 @@ V_SPEC="""<div class="term"><p class="c">A mandate, shortened</p><pre>{
 V_CHAIN='<div class="chain"><div>Mandate<small>signed by a person</small></div><div>Payment<small>signed by the agent</small></div><div>Decision<small>signed by the checker</small></div></div>'
 V_GAP='<div class="incoming"><p class="inc-h">Incoming call</p><dl><div><dt>Is it a bot?</dt><dd class="y">Likely yes</dd></div><div><dt>Who sent it?</dt><dd class="n">Unknown</dd></div><div><dt>What may it do?</dt><dd class="n">Unknown</dd></div></dl></div>'
 
-BOOK=None  # Ivan's own booking link, when he has one
+BOOK='https://cal.com/ivan-voloshyn-hfzit4/30min'
 def cta(h='We test one of your flows with you, free',p='Shadow mode: the check runs next to your flow, with no access to funds and no effect on what you do today. We are early and want to learn from real cases.'):
-    book=f'<a class="btn ghost" href="{BOOK}">Book 20 minutes</a>' if BOOK else ''
+    book=f'<a class="btn ghost" href="{BOOK}">Book a call</a>' if BOOK else ''
     return f'<section class="cta"><div class="wrap"><h2>{h}</h2><p>{p}</p><div class="btns"><a class="btn gold" href="{MAIL}?subject=Test%20one%20flow">Email Ivan</a>{book}<a class="btn ghost" href="/link/">Create a mandate link</a></div></div></section>'
 
 CASES=[
