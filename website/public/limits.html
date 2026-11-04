@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Gleipnir doesn’t do | Gleipnir</title>
+<meta name="description" content="The risks a signed mandate does not solve, in plain words.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0C0E13">
+<link rel="canonical" href="https://getgleipnir.com/limits">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Gleipnir"><meta property="og:url" content="https://getgleipnir.com/limits"><meta property="og:title" content="What Gleipnir doesn’t do | Gleipnir"><meta property="og:description" content="The risks a signed mandate does not solve, in plain words."><meta property="og:image" content="https://getgleipnir.com/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="What Gleipnir doesn’t do | Gleipnir"><meta name="twitter:description" content="The risks a signed mandate does not solve, in plain words."><meta name="twitter:image" content="https://getgleipnir.com/og-image.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary"><link rel="alternate" type="text/markdown" href="/skills.md" title="Agent guide">
+<link rel="preload" href="/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Gleipnir", "url": "https://getgleipnir.com/", "logo": "https://getgleipnir.com/assets/icons/icon-512.png", "email": "ivan.voloshyn@getgleipnir.com", "description": "A power of attorney for AI agents: a person or company signs what one agent may do, and the other side can check it before acting.", "disambiguatingDescription": "Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app).", "sameAs": ["https://github.com/getgleipnir"]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="wrap top">
+  <a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a>
+  <nav class="nav" aria-label="Main"><a href="/#how">How it works</a><a href="/#who">Who it’s for</a><a href="/know-your-agent">Know Your Agent</a><a href="/demo/">Live demo</a><a href="/link/">Mandate link</a><a href="/spec">Spec</a></nav>
+  <a class="btn primary sm" href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call <span aria-hidden="true">→</span></a>
+</header>
+<main id="main" class="wrap plain doc"><p class="eyebrow">Read this first</p><h1>What it doesn’t do</h1><p class="doc-lede">A signed mandate proves who allowed what. Here is what it leaves open. The full threat model is in the spec.</p><div class="limit-grid"><div class="limit"><h3>It doesn’t catch bad decisions</h3><p>An agent acting inside what was allowed can still be wrong. A fake invoice from an approved supplier passes.</p></div><div class="limit"><h3>Prompt injection inside the scope</h3><p>If the agent is tricked into something the mandate allows, the check says allowed. The scope limits the damage, it doesn’t remove it.</p></div><div class="limit"><h3>Duplicate invoices with a new id</h3><p>The same payment id is caught. The same invoice sent again with a new id, inside the limits, is not.</p></div><div class="limit"><h3>Skipping the check</h3><p>Nothing forces anyone to run it. In shadow mode nothing is enforced by design.</p></div><div class="limit"><h3>A stolen signer device</h3><p>Whoever holds the key can sign. Rotation and revocation help after the fact.</p></div><div class="limit"><h3>Who a link signer really is</h3><p>A mandate link alone doesn’t identify the signer. The key has to be enrolled with someone who knows the person.</p></div><div class="limit"><h3>Revocation delay and trust</h3><p>A check made before the revocation stands. The link status answer isn’t signed yet, so whoever controls the status host or the network could fake it.</p></div><div class="limit"><h3>Legal force</h3><p>Whether a mandate counts as proof is open and differs by country. Nobody has tested it in a dispute yet.</p></div></div><p>Full list: <a href="https://github.com/getgleipnir/agent-mandate/blob/kya-mandate-spec/spec/mandate.md#11-threat-model" rel="noopener">spec section 11</a> and the <a href="https://github.com/getgleipnir/agent-mandate/blob/kya-mandate-spec/docs/mandate-link.md" rel="noopener">mandate link notes</a>. Found another one? <a href="https://github.com/getgleipnir/agent-mandate/issues" rel="noopener">Open an issue</a>.</p></main>
+<footer class="foot-d">
+  <div class="wrap foot-cols">
+    <div><h4>Product</h4><a href="/#how">How it works</a><a href="/demo/">Live demo</a><a href="/link/">Mandate link</a><a href="/limits">What it doesn’t do</a></div>
+    <div><h4>Who it’s for</h4><a href="/for-banks">Banks and PSPs</a><a href="/for-platforms">Teams building agents</a><a href="/when-agents-call">Teams agents call</a></div>
+    <div><h4>Developers</h4><a href="/know-your-agent">Know Your Agent</a><a href="/spec">Mandate spec</a><a href="/skills.md">Agent guide</a><a href="https://github.com/getgleipnir/agent-mandate" rel="noopener">GitHub</a></div>
+    <div><h4>Company</h4><a href="/#team">Team</a><a href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call</a><a href="mailto:ivan.voloshyn@getgleipnir.com">Email</a><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a></div>
+  </div>
+  <div class="wrap foot-base"><a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a><span>© 2026 Gleipnir · Vienna, Austria</span></div>
+</footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>
