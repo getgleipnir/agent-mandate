@@ -79,7 +79,7 @@ FAQ=[('What is Gleipnir?','A power of attorney for AI agents. A person or compan
 faq=''.join(f'<details><summary>{q}</summary><p>{a}</p></details>' for q,a in FAQ)
 home=head('index.html','Gleipnir: a power of attorney for AI agents','Your AI agent pays, calls and files for you. Gleipnir lets the bank, insurer or call centre on the other side check who sent it and what it may do.')+HDR+f'''<main id="main">
 <section class="hero"><div class="hero-panel"><div class="glow" aria-hidden="true"></div><div class="hero-grid">
-<div class="hero-copy"><a class="pill" href="#agents"><span class="pill-tag">New</span>Let Claude explain Gleipnir to you{AR}</a>
+<div class="hero-copy"><a class="pill" href="/research"><span class="pill-tag">Research</span>How do you check supplier bank detail changes?{AR}</a><a class="pill" href="#agents"><span class="pill-tag">New</span>Let Claude explain Gleipnir to you{AR}</a>
 <h1>A power of attorney for AI agents</h1>
 <p class="lede">Your AI agent pays, calls and files for you. Gleipnir lets the bank, insurer or call centre on the other side check it was actually allowed to: who signed off, what for, how much.</p>
 <div class="btns"><a class="btn primary" href="#pilot">Test one flow, free</a><a class="btn ghost" href="/link/">Create a mandate link</a></div>
@@ -116,7 +116,7 @@ home=head('index.html','Gleipnir: a power of attorney for AI agents','Your AI ag
 <div class="row flip rv" id="identity"><div class="row-copy"><h3>No new paperwork</h3><p>We start from what you already know about the person or company. Extra proof is optional.</p><ul class="dots"><li>Nothing new to register for</li><li>Open format: anyone can check it without us</li></ul><a class="more" href="{GH}" rel="noopener">GitHub{AR}</a></div><div class="tile wide" aria-hidden="true"><div class="layers"><div class="layer l4">vLEI<small>optional</small></div><div class="layer l3">LEI<small>optional</small></div><div class="layer l2">Company register<small>optional</small></div><div class="layer l1">What you already know<small>enough</small></div></div></div></div>
 </div></section>
 <section id="team" class="sec tight"><div class="wrap"><div class="team-head"><h2>Two founders in Vienna</h2><span class="useed">Part of u:seed · University of Vienna</span></div><div class="team">
-<div class="person rv"><div class="person-top"><span class="av-l" aria-hidden="true">IV</span><div><h3>Ivan Voloshyn</h3><p class="role">Co-founder &amp; CEO</p></div></div><p>Writes the code, including the cryptography. Built Planara and ran online shops before this.</p><a class="more" href="https://www.linkedin.com/in/ivan-voloshyn-096715225/" rel="me noopener">LinkedIn{AR}</a></div>
+<div class="person rv"><div class="person-top"><span class="av-l" aria-hidden="true">IV</span><div><h3>Ivan Voloshyn</h3><p class="role">Co-founder &amp; CEO</p></div></div><p>Writes the code. Signatures use the open @noble libraries. Built Planara and ran online shops before this.</p><a class="more" href="https://www.linkedin.com/in/ivan-voloshyn-096715225/" rel="me noopener">LinkedIn{AR}</a></div>
 <div class="person rv"><div class="person-top"><span class="av-l" aria-hidden="true">TK</span><div><h3>Tatiana Khokhlova</h3><p class="role">Co-founder</p></div></div><p>Turns law into rules software can check. Wrote the full legal rule set behind Planara.</p><a class="more" href="https://www.linkedin.com/in/tatiana-khokhlova-1691693a7/" rel="me noopener">LinkedIn{AR}</a></div></div></div></section>
 <section id="faq" class="sec tight"><div class="wrap"><h2 class="sec-title">Questions</h2><div class="faq">{faq}</div><p class="fine-l more-q">More questions? Ask your AI to read our <a href="/skills.md">agent guide</a>, or write to <a href="mailto:ivan.voloshyn@getgleipnir.com">ivan.voloshyn@getgleipnir.com</a>.</p></div></section>
 {CTA}</main>
@@ -173,6 +173,7 @@ for f,a,bb in [('imprint.html','Gleipnir is an early-stage project building Know
     t=open(f'{SRC}/{f}').read()
     tt=re.search(r'<title>(.*?)</title>',t).group(1)
     open(f'{PUB}/{f}','w').write(head(f,tt,'Legal notice of getgleipnir.com.')+HDR+f'<main id="main" class="wrap plain">{s}</main>\n'+FOOT)
+doc('research.html','Who approved this payee? | Gleipnir','Two founders in Vienna researching how small organisations check supplier bank detail changes before paying.','Research in progress','Who approved this payee?','We are two founders in Vienna researching how small organisations check supplier bank detail changes before paying.','','<p>We talk to finance managers, bookkeepers and auditors about what happened the last time a supplier’s details changed, who checked it, and what the auditor asked for.</p><p>We are not selling anything yet. If you have ten minutes or two lines to share, write to <a href="mailto:ivan.voloshyn@getgleipnir.com">ivan.voloshyn@getgleipnir.com</a>. Everyone who answers gets a summary of what we learn.</p><p>Ivan Voloshyn and Tatiana Khokhlova</p>',False)
 open(f'{PUB}/404.html','w').write(head('404.html','Page not found | Gleipnir','This page does not exist.')+HDR+'<main id="main" class="wrap plain"><h1>This page doesn’t exist</h1><p>Go to the <a href="/">home page</a> or read the <a href="/spec">spec</a>.</p></main>\n'+FOOT)
 # demo
 d=open(f'{PUB}/demo/index.html').read()
@@ -217,7 +218,7 @@ Pages: /healthcare, /insurance, /collections, /for-banks, /for-platforms, /when-
 l=top+l[l.index('\nNot to be confused'):]
 l=l.replace('- Company finance teams: one console for which agents can pay, how much and to whom, with revocation.\n','').replace('specification 0.4','specification 0.6').replace('version 0.4 draft','version 0.6 draft')
 open(f'{PUB}/llms.txt','w').write(l)
-locs=['','healthcare','insurance','collections','know-your-agent','for-banks','for-platforms','when-agents-call','limits','spec','demo/','link/','imprint','privacy']
+locs=['','healthcare','insurance','collections','know-your-agent','for-banks','for-platforms','when-agents-call','limits','research','spec','demo/','link/','imprint','privacy']
 open(f'{PUB}/sitemap.xml','w').write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'+''.join(f'  <url><loc>https://getgleipnir.com/{x}</loc><lastmod>2026-11-04</lastmod></url>\n' for x in locs)+'</urlset>\n')
 # headers
 CSP="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
