@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, kya-mandate-spec]
   pull_request:
 
 permissions:
