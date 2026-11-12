@@ -1,6 +1,8 @@
 # Gleipnir
 
-**Know Your Agent for bank transfers.** A power of attorney for AI agents that any bank can check.
+**A power of attorney for AI agents.** When an agent acts for someone, it carries a signed mandate: who sent it, what it may do, until when. The other side checks it before acting, and the signer can revoke it.
+
+The first profile is bank transfers: a bank or PSP checks the mandate before it executes a payment. Spec 0.6 adds a profile for agent protocols, and mandate links are experimental. Consumer and general non-payment use is open work.
 
 AI agents are starting to pay supplier invoices by SEPA, ACH, Faster Payments and wire. Gleipnir lets the bank verify, before it executes, that a person who may sign for the company actually allowed this agent to make this payment: from this account, to this payee, up to this amount, until this date. Open spec, Python and TypeScript, Apache-2.0.
 
@@ -31,15 +33,16 @@ Gleipnir does not move money and does not verify identities: the bank (KYB) or a
 
 | | |
 |---|---|
-| **Spec** | [spec/mandate.md](spec/mandate.md), version 0.5 (draft). 0.4 objects are still accepted and checked exactly as in 0.4. Covers enrollment, payees not on the mandate and payee approvals, multi-signature, delegation, debtor accounts, accounts and rails worldwide, ISO 20022 pain.001, overrides, signed status, revocation and revocation lists, bank key sets, receipts, closed shapes and versioning, threat model, reason codes (Appendix A), conformance (Appendix B) |
+| **Spec** | [spec/mandate.md](spec/mandate.md), version 0.6 (draft). 0.4 and 0.5 objects are still accepted and checked exactly as before. 0.6 adds an optional agent protocol profile (section 14): agent key thumbprints, counterparty domains, pairwise principals, principal-signed operation approvals and IETF Token Status Lists, for agent protocols such as the Personal Agent Protocol. Covers enrollment, payees not on the mandate and payee approvals, multi-signature, delegation, debtor accounts, accounts and rails worldwide, ISO 20022 pain.001, overrides, signed status, revocation and revocation lists, bank key sets, receipts, closed shapes and versioning, threat model, reason codes (Appendix A), conformance (Appendix B) |
 | **Python checker** | `gleipnir_verify.mandate`, the reference |
 | **TypeScript checker** | `@getgleipnir/verify/mandate` (Node and browsers), same results on every shared vector |
-| **Test vectors** | [192 shared cases](typescript/packages/verify/test/fixtures/mandate-vectors.json) (40 of them `v05_*`): both implementations run them and verify each other's decisions; plus pinned problem messages, payee name keys, key sets and byte-identical pain.001 XML |
+| **Test vectors** | [192 shared cases](typescript/packages/verify/test/fixtures/mandate-vectors.json) (40 of them `v05_*`): both implementations run them and verify each other's decisions; plus pinned problem messages, payee name keys, key sets and byte-identical pain.001 XML. 0.6: [49 more](typescript/packages/verify/test/fixtures/mandate-vectors-06.json) (25 payment cases, 24 operation approval cases) and 68 pinned problems, thumbprints and status list answers |
 | **CLI** | `gleipnir mandate keygen · issue · sign · delegate · approve-payee · pay · kyb · check · resolve · override · status · revoke · revocations · keyset · pain001 · verify · serve · mcp`. `issue --unlisted-payees block\|escalate [--max-per-unlisted-payee X]`; `check` and `resolve` take `--payee-approval FILE` |
 | **Bank side** | `gleipnir mandate serve`: reference `POST /check`, `POST /resolve` and `POST /revoke` server, with `/.well-known/gleipnir-checker.json` and a signed `GET /revocations` list |
 | **Hosted sandbox** | [typescript/packages/hosted](typescript/packages/hosted): the same checker as a multi-tenant Netlify service for pilot partners, with tenant delete (`DELETE /v1/admin/tenants/<id>`) and reservation release (`POST /v1/release`, off by default). Sandbox keys, not for real money |
 | **Agent side** | MCP server (Python, or `npx gleipnir-mandate-mcp`) for Claude, Cursor and any MCP client |
 | **Signatory side** | [site/mandate](site/mandate/index.html): review a mandate, including what happens to payees not on the list, and sign it with a passkey; no network |
+| **Mandate links** (experimental) | [site/link](site/link/index.html): a person signs what an agent may do toward a third party (a collector, an insurer); the third party opens the link and sees who signed and what is allowed. Not part of the spec; see [docs/mandate-link.md](docs/mandate-link.md) |
 | **Live demo** | [site/demo](site/demo/index.html) (getgleipnir.com/demo): the CFO signs with a passkey, the agent pays, a payment to a company not on the mandate and a payment under a revoked mandate are blocked; the TypeScript checker runs in the browser |
 | **Use cases** | [21 scenarios](python/gleipnir-verify/tests/test_mandate_usecases.py) as named tests, from issuing to a dispute three months later |
 | **Examples** | [examples/mandate_demo.py](examples/mandate_demo.py) in this branch. An AP agent paying through Stripe Treasury and one paying by ACH through Increase live on their own branches, `examples/stripe-treasury` and `examples/increase-ach` |
@@ -47,7 +50,7 @@ Gleipnir does not move money and does not verify identities: the bank (KYB) or a
 ## Quickstart: from nothing to a signed decision
 
 ```bash
-git clone https://github.com/getgleipnir/gleipnir && cd gleipnir && alias g="uv run gleipnir mandate"
+git clone https://github.com/getgleipnir/agent-mandate && cd agent-mandate && alias g="uv run gleipnir mandate"
 for k in signer agent bank; do g keygen -o $k.pem; done
 g issue --id m_ap --company "Nordhafen Logistik GmbH" --country AT --signer-id kberger@nordhafen.at --signer-key signer.pem \
   --agent-id ap-agent --agent-key agent.pem --currency EUR --max-per-payment 25000.00 \
@@ -154,14 +157,14 @@ uv sync --all-packages
 uv run ruff check python spec examples
 
 cd typescript && npm ci && npm run build  # build first: one Python test runs the TS MCP
-cd .. && uv run pytest python && cd typescript   # 954 passed, 10 skipped, 1 xfailed
-npx vitest run                            # all packages incl. hosted: 762 passed, 2 skipped
+cd .. && uv run pytest python && cd typescript   # 1012 passed, 11 skipped, 1 xfailed
+npx vitest run                            # all packages incl. hosted: 819 passed, 2 skipped
 npx tsc -p tsconfig.test.json --noEmit    # typecheck
 npm run interop                           # Python and TypeScript read each other's output
 npm run build:site                        # rebuilds the site bundles; a test fails if a committed one is stale
 ```
 
-The 192 shared mandate vectors are generated by `python/gleipnir-verify/tests/mandate_vectors.py`, and both test suites run them.
+The 192 shared mandate vectors, and the 49 vectors of 0.6, are generated by `python/gleipnir-verify/tests/mandate_vectors.py` (`--only-06` rewrites just the 0.6 file), and both test suites run them.
 
 ---
 
@@ -207,7 +210,7 @@ See [docs/mcp-proxy.md](docs/mcp-proxy.md).
 ### Try it in one minute
 
 ```bash
-git clone https://github.com/getgleipnir/gleipnir && cd gleipnir
+git clone https://github.com/getgleipnir/agent-mandate && cd agent-mandate
 uv run gleipnir demo --open
 ```
 

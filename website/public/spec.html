@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandate specification 0.6 (draft) | Gleipnir</title>
+<meta name="description" content="The open Gleipnir mandate format: mandate, payment, decision, revocation, delegation and an agent protocol profile. Apache 2.0.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0C0E13">
+<link rel="canonical" href="https://getgleipnir.com/spec">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Gleipnir"><meta property="og:url" content="https://getgleipnir.com/spec"><meta property="og:title" content="Mandate specification 0.6 (draft) | Gleipnir"><meta property="og:description" content="The open Gleipnir mandate format: mandate, payment, decision, revocation, delegation and an agent protocol profile. Apache 2.0."><meta property="og:image" content="https://getgleipnir.com/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Mandate specification 0.6 (draft) | Gleipnir"><meta name="twitter:description" content="The open Gleipnir mandate format: mandate, payment, decision, revocation, delegation and an agent protocol profile. Apache 2.0."><meta name="twitter:image" content="https://getgleipnir.com/og-image.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary"><link rel="alternate" type="text/markdown" href="/skills.md" title="Agent guide">
+<link rel="preload" href="/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Gleipnir", "url": "https://getgleipnir.com/", "logo": "https://getgleipnir.com/assets/icons/icon-512.png", "email": "ivan.voloshyn@getgleipnir.com", "description": "A power of attorney for AI agents: a person or company signs what one agent may do, and the other side can check it before acting.", "disambiguatingDescription": "Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app).", "sameAs": ["https://github.com/getgleipnir"]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="wrap top">
+  <a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a>
+  <nav class="nav" aria-label="Main"><a href="/mandates#how">How it works</a><a href="/mandates#who">Who it’s for</a><a href="/know-your-agent">Know Your Agent</a><a href="/link/">Mandate link</a><a href="/demo/">Payment demo</a><a href="/spec">Spec</a></nav>
+  <a class="btn primary sm" href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call <span aria-hidden="true">→</span></a>
+</header>
+<main id="main" class="wrap plain doc"><p class="eyebrow">Open specification · version 0.6 (draft)</p><h1>The mandate specification</h1><p class="doc-lede">A mandate is a power of attorney for an AI agent: a person who may sign for a company states what one agent may pay, from which accounts, to whom, how much and until when. A bank or PSP checks it before executing a transfer the agent started, and records a signed decision.</p><div class="doc-vis"><div class="tile" aria-hidden="true"><div class="code"><p class="c-d">{ "v": "gleipnir/mandate/0.6",</p><p class="c-d">&nbsp;&nbsp;"company": { "name": "Nordhafen Logistik GmbH" },</p><p class="c-d">&nbsp;&nbsp;"agent": { "id": "ap-agent", "jkt": "aVBtapLd…" },</p><p class="c-d">&nbsp;&nbsp;"scope": { "max_per_payment": "500.00",</p><p class="c-d">&nbsp;&nbsp;&nbsp;&nbsp;"counterparties": ["shop.example.com"] },</p><p class="c-d">&nbsp;&nbsp;"sig": { "type": "webauthn", … } }</p><p class="c-cap">A mandate, shortened.</p></div></div></div><h2>Scope of this version</h2><p>0.6 is written for company payments, with a profile for agent protocols in section 14: agent key binding, counterparties as domains, principals without user data, per-operation approval and Token Status List. Use by consumers and for other actions is open work. The experimental <a href="/link/">mandate link</a> is a separate prototype.</p>
+<p><a class="btn line" href="https://github.com/getgleipnir/agent-mandate/blob/kya-mandate-spec/spec/mandate.md" rel="noopener">Read the full spec on GitHub</a></p>
+
+<h2>Objects</h2>
+<ul>
+<li><b>Mandate</b>: company, agent, signer(s), from accounts, payees, rails, currency, per-payment and per-period limits, validity. Signed by the company signatory (passkey/WebAuthn, Ed25519 or ECDSA P-256), alone or jointly.</li>
+<li><b>Payment</b>: the transfer the agent wants to make, bound to the mandate by hash and signed by the agent.</li>
+<li><b>Decision</b>: allow, block or escalate, the checks that passed, reason codes, signed by the bank’s checker.</li>
+<li><b>Revocation</b>, <b>signed status</b> and <b>revocation lists</b>: withdrawing a mandate, effective from the next check.</li>
+<li><b>Override</b>: a person signs a decision on an escalated payment.</li>
+<li><b>Delegation</b>: authority passed down a chain, never wider than its source.</li>
+</ul>
+
+<h2>Where trust comes from</h2>
+<p>Only from the bank’s own records (its KYB and the keys it enrolled for each signatory) or a vLEI credential, never from the mandate. After that, every link is a signature.</p>
+
+<h2>The check</h2>
+<p>Ordered steps in five groups: parse, authentic, authorised, still valid, in scope. Each yields a reason code such as <code>payee_not_on_mandate</code>, <code>mandate_revoked</code> or <code>over_payment_limit</code>. The checker uses its own clock, keeps an idempotent payment log, reserves period limits atomically and fails closed.</p>
+
+<h2>Encoding and interoperability</h2>
+<ul>
+<li>RFC 8785 (JCS) canonical JSON, SHA-256, Ed25519 or ECDSA P-256, base64url without padding, strict RFC 3339 timestamps.</li>
+<li>Closed object shapes; extensions only under <code>x</code>. Lengths fit ISO 20022.</li>
+<li>ISO 20022 pain.001.001.09 mapping with the mandate, payment and decision hashes in <code>SplmtryData</code>.</li>
+<li>Bank checker keys published at <code>/.well-known/gleipnir-checker.json</code>.</li>
+</ul>
+
+<h2>Conformance</h2>
+<p>A Python reference and a TypeScript port pass the same published test vectors and verify each other’s decisions. The vectors cover multi-signature, joint signing, delegation, cross-bank vLEI, passkey assertions, eight account schemes, signed status, overrides, key rotation and ISO 20022 messages. Licence: Apache 2.0.</p>
+
+<h2>Try it</h2>
+<ul>
+<li><a href="/demo/">Live demo</a>: the TypeScript checker running in your browser.</li>
+<li><a href="https://github.com/getgleipnir/agent-mandate" rel="noopener">GitHub</a>: <code>gleipnir mandate</code> CLI, HTTP checker (<code>serve</code>) and MCP server (<code>mcp</code>).</li>
+<li><a href="/skills.md">Agent guide</a> for AI assistants.</li>
+</ul>
+<p>Version 0.6 is a draft. Comments and implementations are welcome: open an issue on GitHub or write to us.</p>
+
+
+
+</main>
+<footer class="foot-d">
+  <div class="wrap foot-cols">
+    <div><h4>Product</h4><a href="/mandates#how">How it works</a><a href="/demo/">Live demo</a><a href="/link/">Mandate link</a><a href="/limits">What it doesn’t do</a></div>
+    <div><h4>Who it’s for</h4><a href="/healthcare">Healthcare</a><a href="/insurance">Insurance</a><a href="/collections">Collections</a><a href="/for-banks">Banks and PSPs</a><a href="/for-platforms">Teams building agents</a></div>
+    <div><h4>Developers</h4><a href="/know-your-agent">Know Your Agent</a><a href="/spec">Mandate spec</a><a href="/skills.md">Agent guide</a><a href="https://github.com/getgleipnir/agent-mandate" rel="noopener">GitHub</a></div>
+    <div><h4>Company</h4><a href="/#team">Team</a><a href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call</a><a href="mailto:ivan.voloshyn@getgleipnir.com">Email</a><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a></div>
+  </div>
+  <div class="wrap foot-base"><a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a><span>© 2026 Gleipnir · Vienna, Austria</span></div>
+</footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>

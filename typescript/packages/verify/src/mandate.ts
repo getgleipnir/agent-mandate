@@ -1,5 +1,5 @@
 /**
- * Mandates for AI agents that pay (spec/mandate.md 0.5; 0.4 objects keep their 0.4 behaviour), TypeScript port
+ * Mandates for AI agents that pay (spec/mandate.md 0.6; 0.4 and 0.5 objects keep their behaviour), TypeScript port
  * of the Python reference `gleipnir_verify.mandate`. Same hashes, signatures, check order and reason codes; conformance is
  * pinned by the shared vectors in test/fixtures/mandate-vectors.json.
  *
@@ -21,7 +21,9 @@
  * Amounts are handled as bigint minor units (cents; yen for JPY), never as floats.
  */
 
-import { b64uEncode, hexToBytes, utf8, concatBytes } from "./bytes.js";
+import { Unzlib, zlibSync } from "fflate";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { b64uDecode, b64uEncode, hexToBytes, utf8, concatBytes } from "./bytes.js";
 import { canonicalize, canonicalizeString, hashToBytes, sha256Tagged } from "./canon.js";
 import { decodePublicKey, ed25519PublicFromSeed, ed25519Sign, encodePublicKey, verifySignature } from "./crypto.js";
 import { webauthnProblem } from "./approvals.js";
@@ -35,8 +37,13 @@ const V = MANDATE_VERSION;
 /** Mandates that use unlisted_payees, payee approvals, revocations of them, and decisions about 0.5 mandates. */
 export const MANDATE_VERSION_05 = "0.5";
 const V5 = MANDATE_VERSION_05;
+/** The agent protocol profile (spec 15): mandates that use it, operation approvals, decisions about them. */
+export const MANDATE_VERSION_06 = "0.6";
+const V6 = MANDATE_VERSION_06;
+/** Drafts with payee approvals and unlisted payees (0.6 is 0.5 plus the profile). */
+const V56: readonly string[] = [V5, V6];
 /** The latest draft of the spec this library implements. */
-export const SPEC_VERSION = V5;
+export const SPEC_VERSION = V6;
 
 // ---------- accounts and rails (spec section 6) ----------
 
@@ -242,9 +249,12 @@ export function mandateMessage(kind: string, hash: string, version: string = V):
   return concatBytes(utf8(`gleipnir/${kind}/v${version}\n`), utf8(hash));
 }
 
-/** The draft an object is in: "0.5" if its `v` says so, else "0.4" (the version every other check uses). */
+/** The draft an object is in: "0.6" or "0.5" if its `v` says so, else "0.4" (the version every other check uses). */
 export function versionOf(obj: unknown, kind: string): string {
-  return isDict(obj) && hasKey(obj, "v") && obj.v === `gleipnir/${kind}/${V5}` ? V5 : V;
+  if (isDict(obj) && hasKey(obj, "v")) {
+    for (const ver of [V6, V5]) if (obj.v === `gleipnir/${kind}/${ver}`) return ver;
+  }
+  return V;
 }
 
 /** The hash every payee approval signature covers: the approval minus `sigs`. */
@@ -390,13 +400,25 @@ export interface IssueOptions {
   validFrom?: string;
   statusUrl?: string;
   issuedAt?: string;
-  /** "0.4" or "0.5"; by default 0.5 if the scope uses unlisted_payees or max_per_unlisted_payee, else 0.4. */
+  /**
+   * "0.4", "0.5" or "0.6"; by default 0.6 if the mandate uses the agent protocol profile (spec 15: agent.jkt,
+   * scope.counterparties, status, principal_commitment, pairwise signer ids), else 0.5 if the scope uses
+   * unlisted_payees or max_per_unlisted_payee, else 0.4.
+   */
   version?: string;
+  /** Top-level 0.6 fields: `status` ({status_list: {idx, uri}}) and `principal_commitment`. */
+  extra?: JsonDict;
 }
 
 /** An unsigned mandate. */
 export function issue(o: IssueOptions): JsonDict {
-  const version = o.version ?? (hasKey(o.scope, "unlisted_payees") || hasKey(o.scope, "max_per_unlisted_payee") ? V5 : V);
+  const extra = o.extra ?? {};
+  const people = o.signer ? [o.signer] : (o.signers?.of ?? []);
+  const v6 = hasKey(o.agent, "jkt") || hasKey(o.scope, "counterparties") || hasKey(extra, "status")
+    || hasKey(extra, "principal_commitment")
+    || people.some((p) => isDict(p) && String(hasKey(p, "id") ? p.id : "").startsWith(PAIRWISE));
+  const version = o.version ?? (v6 ? V6
+    : hasKey(o.scope, "unlisted_payees") || hasKey(o.scope, "max_per_unlisted_payee") ? V5 : V);
   const m: JsonDict = {
     v: `gleipnir/mandate/${version}`, id: o.id, company: o.company, agent: o.agent, scope: o.scope,
     valid_until: o.validUntil, issued_at: o.issuedAt ?? fmtTs(nowMicros()),
@@ -406,6 +428,7 @@ export function issue(o: IssueOptions): JsonDict {
   if (o.delegation && o.delegation.length) m.delegation = o.delegation;
   if (o.validFrom) m.valid_from = o.validFrom;
   if (o.statusUrl) m.status_url = o.statusUrl;
+  for (const k of Object.keys(extra)) put(m, k, extra[k]);
   const problem = mandateProblem(m);
   if (problem) throw new Error(problem);
   return m;
@@ -463,7 +486,9 @@ export function revoke(
   o: { signer: JsonDict; seed: Seed; id: string; reason?: string; revokedAt?: string },
 ): JsonDict {
   const kind = String(target.v ?? "");
-  const ver = kind.startsWith("gleipnir/payee_approval/") || kind === `gleipnir/mandate/${V5}` ? V5 : V;
+  // 0.6 has no revocation of its own: a 0.5 revocation names a 0.6 mandate by hash like any other.
+  const ver = kind.startsWith("gleipnir/payee_approval/") || kind === `gleipnir/mandate/${V5}`
+    || kind === `gleipnir/mandate/${V6}` ? V5 : V;
   const r: JsonDict = { v: `gleipnir/revocation/${ver}`, id: o.id };
   if (kind.startsWith("gleipnir/delegation/")) {
     r.delegation = target.id;
@@ -488,7 +513,7 @@ export function revoke(
 export function approvePayee(
   mandate: JsonDict, o: { payee: JsonDict; id: string; approvedAt?: string; validUntil?: string; reason?: string },
 ): JsonDict {
-  if (versionOf(mandate, "mandate") !== V5) throw new Error("payee approvals need a 0.5 mandate");
+  if (!V56.includes(versionOf(mandate, "mandate"))) throw new Error("payee approvals need a 0.5 or 0.6 mandate");
   const a: JsonDict = {
     v: `gleipnir/payee_approval/${V5}`, id: o.id, mandate: { id: mandate.id, hash: mandateHash(mandate) },
     payee: { name: hasKey(o.payee, "name") ? o.payee.name : "", account: hasKey(o.payee, "account") ? o.payee.account : null },
@@ -667,6 +692,16 @@ export const SHAPES: Readonly<Record<string, Readonly<Record<string, Kind>>>> = 
   "scope@0.5": { ...SHAPES_04.scope, unlisted_payees: A, max_per_unlisted_payee: A },
   "mandate@0.5": { ...SHAPES_04.mandate, scope: O("scope@0.5") },
   "revocation@0.5": { ...SHAPES_04.revocation, payee_approval: A, payee_approval_hash: A },
+  // 0.6, the agent protocol profile (spec 15): every field is optional; without them a 0.6 mandate is checked like 0.5.
+  "agent@0.6": { ...SHAPES_04.agent, jkt: A },
+  "scope@0.6": { ...SHAPES_04.scope, unlisted_payees: A, max_per_unlisted_payee: A, counterparties: A },
+  status_list_ref: { idx: A, uri: A },
+  mandate_status: { status_list: O("status_list_ref") },
+  "mandate@0.6": { ...SHAPES_04.mandate, agent: O("agent@0.6"), scope: O("scope@0.6"), status: O("mandate_status"),
+    principal_commitment: A },
+  operation_approval: { v: A, mandate_hash: A, counterparty: A, operation_id: A, revision: A, terms: A, expires_at: A,
+    approved_at: A, agent_jkt: A, sigs: L("osig"), x: "x" },
+  operation: { operation_id: A, revision: A, summary: A, terms: A, expires_at: A },
 };
 
 /** Code-point order of keys, like Python's sorted(). */
@@ -813,15 +848,18 @@ function unlistedProblem(sc: JsonDict): string | null {
   return null;
 }
 
-/** Why this is not a well-formed mandate (0.4 or 0.5), or null. */
+/** Why this is not a well-formed mandate (0.4, 0.5 or 0.6), or null. */
 export function mandateProblem(m: unknown): string | null {
-  if (!isDict(m) || (m.v !== `gleipnir/mandate/${V}` && m.v !== `gleipnir/mandate/${V5}`)) return "unknown mandate version";
+  if (!isDict(m) || (m.v !== `gleipnir/mandate/${V}` && m.v !== `gleipnir/mandate/${V5}` && m.v !== `gleipnir/mandate/${V6}`)) {
+    return "unknown mandate version";
+  }
   const bad = strFields(m, ["id", "company.name", "company.country", "agent.id", "scope.currency",
     "scope.max_per_payment", "valid_until", "issued_at"]);
   if (bad) return bad;
   if (!jcsOk(m)) return "mandate is not valid I-JSON";
-  const v5 = versionOf(m, "mandate") === V5;
-  const shapeBad = shapeProblem(m, v5 ? "mandate@0.5" : "mandate", "");
+  const mv = versionOf(m, "mandate");
+  const v5 = V56.includes(mv);
+  const shapeBad = shapeProblem(m, mv === V6 ? "mandate@0.6" : mv === V5 ? "mandate@0.5" : "mandate", "");
   if (shapeBad) return shapeBad;
   if (!COUNTRY_RE.test((m.company as JsonDict).country as string)) return "company.country must be an ISO 3166-1 alpha-2 code";
   const bad2 = signersProblem(m) ?? scopeProblem(m.scope as JsonDict, true) ?? validityProblem(m)
@@ -843,7 +881,7 @@ export function mandateProblem(m: unknown): string | null {
       if (b) return `delegation: ${b}`;
     }
   }
-  return null;
+  return mv === V6 ? profileProblem(m) : null;
 }
 
 /** Why this is not a well-formed delegation, or null. */
@@ -989,6 +1027,351 @@ function approvalsProblem(approvals: unknown): string | null {
   return null;
 }
 
+// ---------- 0.6: the agent protocol profile (spec 15) ----------
+// Optional fields that let a mandate travel inside agent protocols (for example the Personal Agent Protocol): the
+// agent bound by its key's JWK thumbprint, counterparties named by domain, principals named by a pairwise id or a
+// salted commitment, per-operation approvals signed by the principal, and an IETF Token Status List entry.
+
+export const PAIRWISE = "pairwise:";
+const PAIRWISE_RE = /^pairwise:[A-Za-z0-9_-]{16,128}$/;
+const JKT_RE = /^[A-Za-z0-9_-]{43}$/;
+const B64U_RE = /^[A-Za-z0-9_-]*$/;
+const COMMITMENT_RE = /^sha256:[0-9a-f]{64}$/;
+const LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+const DOMAIN_RE = new RegExp(`^(?:${LABEL}\\.)+${LABEL}$`);
+const OP_ID_RE = /^[A-Za-z0-9_-]{1,256}$/; // PAP spec 8.2: 1 to 256 characters of the URL-safe base64 alphabet
+const SALT_RE = /^[A-Za-z0-9_-]{22,128}$/; // at least 16 random bytes
+export const MAX_COUNTERPARTIES = 64;
+/** A decompressed status list larger than 16 MiB is refused. */
+export const MAX_STATUS_LIST_BYTES = 1 << 24;
+const MAX_STATUS_LIST_LIFETIME_S = 24 * 3600;
+export const STATUS_VALID = 0, STATUS_INVALID = 1, STATUS_SUSPENDED = 2;
+
+/**
+ * Why this is not a counterparty domain in canonical form, or null: lowercase ASCII host name of at least two labels
+ * (IDNs as A-labels), at most 253 characters, no trailing dot, port, scheme or wildcard, not an IPv4 address.
+ */
+export function domainProblem(d: unknown): string | null {
+  if (typeof d !== "string" || [...d].length > 253 || !DOMAIN_RE.test(d) || /^[0-9]+$/.test(d.slice(d.lastIndexOf(".") + 1))) {
+    return `not a canonical domain: ${pyRepr(d)}`;
+  }
+  return null;
+}
+
+/** 32 bytes from canonical unpadded base64url text (43 characters), else null. */
+function b64u32(text: unknown): Uint8Array | null {
+  if (typeof text !== "string" || text.length !== 43 || !B64U_RE.test(text)) return null;
+  try {
+    const raw = b64uDecode(text);
+    return raw.length === 32 && b64uEncode(raw) === text ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+const PRIVATE_JWK = ["d", "p", "q", "dp", "dq", "qi", "k", "oth"];
+
+/** Why this is not a public Ed25519 (OKP) or P-256 (EC) JWK, or null. Extra public members are allowed. */
+export function jwkProblem(jwk: unknown): string | null {
+  if (!isDict(jwk)) return "a JWK must be an object";
+  if (PRIVATE_JWK.some((k) => hasKey(jwk, k))) return "a JWK must not contain private key members";
+  if (jwk.kty === "OKP" && jwk.crv === "Ed25519") return b64u32(hasKey(jwk, "x") ? jwk.x : null) ? null : "bad Ed25519 JWK x";
+  if (jwk.kty === "EC" && jwk.crv === "P-256") {
+    return b64u32(hasKey(jwk, "x") ? jwk.x : null) && b64u32(hasKey(jwk, "y") ? jwk.y : null) ? null : "bad P-256 JWK x or y";
+  }
+  return "only Ed25519 (OKP) and P-256 (EC) JWKs are supported";
+}
+
+/** RFC 7638 JWK thumbprint (SHA-256, base64url) of the required members. Throws for what jwkProblem refuses. */
+export function jwkThumbprint(jwk: unknown): string {
+  const problem = jwkProblem(jwk);
+  if (problem) throw new Error(problem);
+  const j = jwk as JsonDict;
+  const members = j.kty === "OKP" ? { crv: j.crv, kty: j.kty, x: j.x } : { crv: j.crv, kty: j.kty, x: j.x, y: j.y };
+  return b64uEncode(sha256(canonicalize(members)));
+}
+
+/** A public key in this spec's format ("ed25519:..." or "ecdsa-p256:...") as a JWK. */
+export function publicKeyJwk(publicKey: string): JsonDict {
+  const pub = decodePublicKey(publicKey);
+  if (pub instanceof Uint8Array) return { kty: "OKP", crv: "Ed25519", x: b64uEncode(pub) };
+  return { kty: "EC", crv: "P-256", x: b64uEncode(pub.point.slice(1, 33)), y: b64uEncode(pub.point.slice(33, 65)) };
+}
+
+/** A salted commitment to a principal identifier (spec 15.3): sha256 over JCS {"id", "salt"}. */
+export function principalCommitment(principalId: unknown, salt: unknown): string {
+  if (typeof principalId !== "string" || !principalId || typeof salt !== "string" || !SALT_RE.test(salt)) {
+    throw new Error("a principal commitment needs a non-empty id and a base64url salt of 22 to 128 characters");
+  }
+  return sha256Tagged(canonicalize({ id: principalId, salt }));
+}
+
+function pairwiseProblem(p: JsonDict, what: string): string | null {
+  const pid = p.id;
+  if (typeof pid === "string" && pid.startsWith(PAIRWISE)) {
+    if (!PAIRWISE_RE.test(pid)) return `${what}.id: a pairwise id is pairwise: and 16 to 128 base64url characters`;
+    if (hasKey(p, "name") || hasKey(p, "role")) return `${what}: a pairwise signer carries no name or role`;
+  }
+  return null;
+}
+
+/** 0.6 rules for the agent protocol profile (spec 15.1). */
+function profileProblem(m: JsonDict): string | null {
+  const agent = m.agent as JsonDict;
+  if (hasKey(agent, "jkt")) {
+    if (typeof agent.jkt !== "string" || !JKT_RE.test(agent.jkt) || b64u32(agent.jkt) === null) {
+      return "agent.jkt must be a base64url SHA-256 JWK thumbprint";
+    }
+    if (hasKey(agent, "public_key")) {
+      let ok = false;
+      try {
+        ok = jwkThumbprint(publicKeyJwk(agent.public_key as string)) === agent.jkt;
+      } catch {
+        ok = false;
+      }
+      if (!ok) return "agent.jkt is not the thumbprint of agent.public_key";
+    }
+  }
+  const sc = m.scope as JsonDict;
+  if (hasKey(sc, "counterparties")) {
+    const cps = sc.counterparties;
+    if (!Array.isArray(cps) || cps.length < 1 || cps.length > MAX_COUNTERPARTIES) {
+      return `counterparties must be a list of 1 to ${MAX_COUNTERPARTIES} domains`;
+    }
+    for (const d of cps) {
+      const bad = domainProblem(d);
+      if (bad) return `counterparties: ${bad}`;
+    }
+    if (new Set(cps).size !== cps.length) return "counterparties lists a domain twice";
+  }
+  if (hasKey(m, "status")) {
+    const st = m.status;
+    const ref = isDict(st) && hasKey(st, "status_list") ? st.status_list : null;
+    if (!isDict(ref) || Object.keys(ref).length !== 2 || !hasKey(ref, "idx") || !hasKey(ref, "uri")) {
+      return "status needs status_list {idx, uri}";
+    }
+    if (typeof ref.idx !== "number" || !Number.isInteger(ref.idx) || ref.idx < 0) {
+      return "status.status_list.idx must be a non-negative integer";
+    }
+    const uri = ref.uri;
+    if (typeof uri !== "string" || !uri.startsWith("https://") || uri.length > MAX_URL || !isAscii(uri)) {
+      return "status.status_list.uri must be an https URL";
+    }
+  }
+  if (hasKey(m, "principal_commitment")
+    && (typeof m.principal_commitment !== "string" || !COMMITMENT_RE.test(m.principal_commitment))) {
+    return "principal_commitment must be sha256: and 64 lowercase hex digits";
+  }
+  const people: [string, JsonDict][] = hasKey(m, "signer") ? [["signer", m.signer as JsonDict]]
+    : ((m.signers as JsonDict).of as JsonDict[]).map((p) => ["signers.of[]", p] as [string, JsonDict]);
+  for (const [what, p] of people) {
+    const bad = pairwiseProblem(p, what);
+    if (bad) return bad;
+  }
+  return null;
+}
+
+/** The hash every operation approval signature covers: the approval minus `sigs` (spec 15.4). */
+export function operationApprovalHash(approval: JsonDict): string {
+  return objHash(approval, "sigs");
+}
+
+/**
+ * Why this is not an operation as the counterparty describes it (spec 15.4), or null: operation_id and revision (PAP
+ * ID characters), optional terms (an object), expires_at (strict UTC), and an optional summary the checker does not read.
+ */
+export function operationProblem(op: unknown): string | null {
+  if (!isDict(op)) return "an operation must be an object";
+  if (!jcsOk(op)) return "operation is not valid I-JSON";
+  const shapeBad = shapeProblem(op, "operation", "");
+  if (shapeBad) return shapeBad;
+  for (const k of ["operation_id", "revision"]) {
+    const v = hasKey(op, k) ? op[k] : null;
+    if (typeof v !== "string" || !OP_ID_RE.test(v)) return `${k} must be 1 to 256 base64url characters`;
+  }
+  if (hasKey(op, "terms") && !isDict(op.terms)) return "terms must be an object";
+  if (hasKey(op, "summary") && typeof op.summary !== "string") return "summary must be a string";
+  try {
+    ts(hasKey(op, "expires_at") ? op.expires_at : null);
+  } catch (e) {
+    return msg(e);
+  }
+  return null;
+}
+
+/** Why this is not a well-formed operation approval (0.6, spec 15.4), or null. */
+export function operationApprovalProblem(a: unknown): string | null {
+  if (!isDict(a) || a.v !== `gleipnir/operation_approval/${V6}`) return "unknown operation approval version";
+  const bad = strFields(a, ["mandate_hash", "counterparty", "operation_id", "revision", "expires_at", "approved_at"]);
+  if (bad || !jcsOk(a)) return bad ?? "operation approval is not valid I-JSON";
+  const shapeBad = shapeProblem(a, "operation_approval", "");
+  if (shapeBad) return shapeBad;
+  if (!COMMITMENT_RE.test(a.mandate_hash as string)) return "mandate_hash must be sha256: and 64 lowercase hex digits";
+  const cpBad = domainProblem(a.counterparty);
+  if (cpBad) return `counterparty: ${cpBad}`;
+  const op: JsonDict = {};
+  for (const k of ["operation_id", "revision", "terms", "expires_at"]) if (hasKey(a, k)) op[k] = a[k];
+  const opBad = operationProblem(op);
+  if (opBad) return opBad;
+  if (hasKey(a, "agent_jkt") && b64u32(a.agent_jkt) === null) return "agent_jkt must be a base64url SHA-256 JWK thumbprint";
+  const sigsBad = osigsProblem(hasKey(a, "sigs") ? a.sigs : null, "an operation approval");
+  if (sigsBad) return sigsBad;
+  try {
+    if (ts(a.expires_at) < ts(a.approved_at)) return "expires_at is before approved_at";
+  } catch (e) {
+    return msg(e);
+  }
+  return null;
+}
+
+/**
+ * An unsigned operation approval (spec 15.4): the principal approves one revision of one operation of one
+ * counterparty, under this 0.6 mandate. `operation` is what the counterparty returned (operation_id, revision,
+ * terms?, expires_at in UTC); its summary is not copied, since the revision names it. Sign with signOperationApproval.
+ */
+export function approveOperation(
+  mandate: JsonDict, o: { counterparty: string; operation: JsonDict; approvedAt?: string; agentJkt?: string },
+): JsonDict {
+  if (versionOf(mandate, "mandate") !== V6) throw new Error("operation approvals need a 0.6 mandate");
+  const op = o.operation;
+  const a: JsonDict = {
+    v: `gleipnir/operation_approval/${V6}`, mandate_hash: mandateHash(mandate), counterparty: o.counterparty,
+    operation_id: hasKey(op, "operation_id") ? op.operation_id : null, revision: hasKey(op, "revision") ? op.revision : null,
+    expires_at: hasKey(op, "expires_at") ? op.expires_at : null, approved_at: o.approvedAt ?? fmtTs(nowMicros()), sigs: [],
+  };
+  if (hasKey(op, "terms")) a.terms = op.terms;
+  if (o.agentJkt !== undefined) a.agent_jkt = o.agentJkt;
+  const problem = operationApprovalProblem({ ...a, sigs: [{ signer: { id: "x", public_key: "x" }, sig: "x" }] });
+  if (problem) throw new Error(problem);
+  return a;
+}
+
+/** Add (or replace) one signature on an operation approval. `signer`: {id, public_key} of the person signing. */
+export function signOperationApproval(approval: JsonDict, seed: Seed, signer: JsonDict): JsonDict {
+  const entry = { signer, sig: sigText(seed, "operation_approval", operationApprovalHash(approval), V6) };
+  const prior = Array.isArray(approval.sigs) ? (approval.sigs as JsonDict[]) : [];
+  return { ...approval, sigs: [...prior.filter((s) => get(s, "signer.id") !== signer.id), entry] };
+}
+
+/** What a passkey signs for an operation approval (the WebAuthn challenge is its 32 raw bytes). */
+export function operationApprovalDigest(approval: JsonDict): string {
+  return sha256Tagged(mandateMessage("operation_approval", operationApprovalHash(approval), V6));
+}
+
+/** The log key that makes an operation single-use: JCS of ["operation", counterparty, operation_id] (spec 15.4). */
+export function operationKey(counterparty: string, operationId: string): string {
+  return canonicalizeString(["operation", counterparty, operationId]);
+}
+
+// ---- Token Status List (draft-ietf-oauth-status-list) ----
+
+function b64uStrict(text: string): Uint8Array {
+  if (!B64U_RE.test(text) || text.length % 4 === 1) throw new Error("bad base64url");
+  const raw = b64uDecode(text);
+  if (b64uEncode(raw) !== text) throw new Error("bad base64url");
+  return raw;
+}
+
+function strictJson(raw: Uint8Array): unknown {
+  return parseStrict(new TextDecoder("utf-8", { fatal: true }).decode(raw));
+}
+
+/** DER ECDSA-Sig-Value for a raw r || s, or null for a zero component. */
+function derEcdsa(raw: Uint8Array): Uint8Array | null {
+  const int = (b: Uint8Array): Uint8Array | null => {
+    let i = 0;
+    while (i < b.length && b[i] === 0) i++;
+    if (i === b.length) return null;
+    const v = b.slice(i);
+    const body = v[0]! & 0x80 ? concatBytes(new Uint8Array([0]), v) : v;
+    return concatBytes(new Uint8Array([0x02, body.length]), body);
+  };
+  const r = int(raw.slice(0, 32)), s = int(raw.slice(32, 64));
+  if (!r || !s) return null;
+  return concatBytes(new Uint8Array([0x30, r.length + s.length]), r, s);
+}
+
+function inflateLimited(data: Uint8Array): Uint8Array {
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  let done = false;
+  const z = new Unzlib((chunk, final) => {
+    total += chunk.length;
+    if (total > MAX_STATUS_LIST_BYTES) throw new Error("status list too large");
+    parts.push(chunk);
+    if (final) done = true;
+  });
+  z.push(data, true);
+  if (!done) throw new Error("bad status list data");
+  return concatBytes(...parts);
+}
+
+/**
+ * The status of entry `idx` in a Status List Token (JWT form, draft-ietf-oauth-status-list) from `uri`, signed by
+ * one of `issuerKeys` (keys in this spec's format, trusted out of band), else throws. Same rules as the Python
+ * reference `status_list_status`: typ statuslist+jwt; EdDSA (Ed25519) or ES256 (P-256) by a trusted key; sub = uri;
+ * iat no later than at + 60 s and no older than maxAgeMs; exp present, after at, at most 24 hours after iat; bits
+ * 1, 2, 4 or 8; ZLIB data of at most 16 MiB; idx in range.
+ */
+export function statusListStatus(
+  token: unknown, uri: string, idx: number, issuerKeys: readonly string[], at: Date, maxAgeMs = 3_600_000,
+): number {
+  if (typeof token !== "string" || token.split(".").length !== 3 || !isAscii(token)) throw new Error("not a compact JWT");
+  const [h64, p64, s64] = token.split(".") as [string, string, string];
+  const header = strictJson(b64uStrict(h64)), payload = strictJson(b64uStrict(p64)), sig = b64uStrict(s64);
+  if (!isDict(header) || !isDict(payload)) throw new Error("JWT header and payload must be objects");
+  if (header.typ !== "statuslist+jwt") throw new Error("typ must be statuslist+jwt");
+  const signingInput = utf8(`${h64}.${p64}`);
+  let ok = false;
+  for (const text of issuerKeys) {
+    let pub: ReturnType<typeof decodePublicKey>;
+    try {
+      pub = decodePublicKey(text);
+    } catch {
+      continue;
+    }
+    if (header.alg === "EdDSA" && pub instanceof Uint8Array && sig.length === 64) {
+      ok = verifySignature(pub, signingInput, "ed25519:" + b64uEncode(sig));
+    } else if (header.alg === "ES256" && !(pub instanceof Uint8Array) && sig.length === 64) {
+      const der = derEcdsa(sig);
+      ok = der !== null && verifySignature(pub, signingInput, "ecdsa-p256:" + b64uEncode(der));
+    }
+    if (ok) break;
+  }
+  if (!ok) throw new Error("status list token is not signed by a trusted key");
+  if (payload.sub !== uri) throw new Error("status list token sub is not the mandate's uri");
+  const iat = payload.iat, exp = payload.exp;
+  if (typeof iat !== "number" || !Number.isInteger(iat) || typeof exp !== "number" || !Number.isInteger(exp)) {
+    throw new Error("status list token needs integer iat and exp");
+  }
+  const t = Math.floor(at.getTime() / 1000);
+  if (iat > t + 60 || t - iat > maxAgeMs / 1000 || t >= exp || exp - iat > MAX_STATUS_LIST_LIFETIME_S) {
+    throw new Error("status list token is not current");
+  }
+  const sl = payload.status_list;
+  if (!isDict(sl) || ![1, 2, 4, 8].includes(sl.bits as number) || typeof sl.lst !== "string") throw new Error("bad status_list");
+  const data = inflateLimited(b64uStrict(sl.lst));
+  const bits = sl.bits as number;
+  const pos = idx * bits;
+  if (!Number.isInteger(idx) || idx < 0 || Math.floor(pos / 8) >= data.length) throw new Error("index out of range");
+  return (data[Math.floor(pos / 8)]! >> (pos % 8)) & ((1 << bits) - 1);
+}
+
+/**
+ * A Status List Token (JWT) for tests and demos, signed EdDSA with an Ed25519 seed: `entries` packed `bits` per
+ * index, least significant bit first, ZLIB-compressed.
+ */
+export function statusListToken(entries: number[], o: { uri: string; bits: number; seed: Seed; iat: number; exp: number }): string {
+  const data = new Uint8Array(Math.ceil((entries.length * o.bits) / 8));
+  entries.forEach((v, i) => {
+    const pos = i * o.bits;
+    data[Math.floor(pos / 8)]! |= (v & ((1 << o.bits) - 1)) << (pos % 8);
+  });
+  const h = b64uEncode(canonicalize({ alg: "EdDSA", typ: "statuslist+jwt" }));
+  const p = b64uEncode(canonicalize({ sub: o.uri, iat: o.iat, exp: o.exp, status_list: { bits: o.bits, lst: b64uEncode(zlibSync(data)) } }));
+  return `${h}.${p}.${b64uEncode(ed25519Sign(o.seed, utf8(`${h}.${p}`)))}`;
+}
+
 // ---------- payee names (spec 7, step 21) ----------
 
 /**
@@ -1041,7 +1424,8 @@ export interface WebauthnOptions {
 function verify(kind: string, hash: string, sig: unknown, pubText: unknown, wa: WebauthnOptions, version: string = V): boolean {
   try {
     const pub = decodePublicKey(pubText);
-    if (isDict(sig) && sig.type === "webauthn" && (kind === "mandate" || kind === "override" || kind === "payee_approval")) {
+    if (isDict(sig) && sig.type === "webauthn"
+      && (kind === "mandate" || kind === "override" || kind === "payee_approval" || kind === "operation_approval")) {
       return webauthnProblem(sig, pub, sha256Tagged(mandateMessage(kind, hash, version)), wa.rpId ?? "", wa.origins ?? [], null) === null;
     }
     return verifySignature(pub, mandateMessage(kind, hash, version), sig);
@@ -1311,6 +1695,85 @@ type State = {
   payeeApproval?: JsonDict;
 };
 
+function ctxOf(context: unknown): JsonDict {
+  return isDict(context) ? context : {};
+}
+
+function thumbprintOf(jwk: unknown): string | null {
+  try {
+    return jwkThumbprint(jwk);
+  } catch {
+    return null; // any malformed key matches nothing
+  }
+}
+
+function principalOk(m: JsonDict, principal: unknown): boolean {
+  if (!isDict(principal) || !hasKey(m, "principal_commitment")) return false;
+  try {
+    return principalCommitment(hasKey(principal, "id") ? principal.id : null, hasKey(principal, "salt") ? principal.salt : null)
+      === m.principal_commitment;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Step 6a (0.6, spec 15.1 and 15.3): a mandate that names its agent only by agent.jkt needs the key the checker saw
+ * the agent prove, with that thumbprint; a principal opening given in the context must match the commitment.
+ */
+function bound(m: JsonDict, context: unknown): string | null {
+  const ctx = ctxOf(context);
+  const agent = m.agent as JsonDict;
+  if (hasKey(agent, "jkt") && !hasKey(agent, "public_key")
+    && thumbprintOf(hasKey(ctx, "agent_jwk") ? ctx.agent_jwk : null) !== agent.jkt) return "agent_key_mismatch";
+  if (hasKey(ctx, "principal") && !principalOk(m, ctx.principal)) return "principal_mismatch";
+  return null;
+}
+
+function boundChecks(m: JsonDict, context: unknown): string[] {
+  const agent = m.agent as JsonDict;
+  const out = hasKey(agent, "jkt") && !hasKey(agent, "public_key") ? ["agent_key_bound"] : [];
+  return hasKey(ctxOf(context), "principal") ? [...out, "principal_confirmed"] : out;
+}
+
+/** Step 18a (spec 15.2): the counterparty the checker's own systems name is on the mandate, exactly. */
+function counterpartyStep(sc: JsonDict, context: unknown, checks: string[]): string | null {
+  const ctx = ctxOf(context);
+  const cp = hasKey(ctx, "counterparty") ? ctx.counterparty : null;
+  if (typeof cp !== "string" || !(sc.counterparties as string[]).includes(cp)) return "counterparty_not_on_mandate";
+  checks.push("counterparty_on_mandate");
+  return null;
+}
+
+/** The approval names exactly the operation the counterparty is about to perform. */
+function sameOperation(a: JsonDict, op: JsonDict): boolean {
+  if (a.operation_id !== op.operation_id || a.revision !== op.revision) return false;
+  if (hasKey(a, "terms") !== hasKey(op, "terms") || (hasKey(a, "terms") && !same(a.terms, op.terms))) return false;
+  return ts(a.expires_at) === ts(op.expires_at);
+}
+
+/**
+ * The agent key binding of an operation (spec 15.4, step 6): every thumbprint the mandate or the approval names must be
+ * the thumbprint of the key the checker saw the agent prove. Returns [reason or null, whether anything was bound].
+ */
+function opAgent(m: JsonDict, a: JsonDict, ctx: JsonDict): [string | null, boolean] {
+  const agent = m.agent as JsonDict;
+  const wanted = new Set<string>();
+  if (hasKey(agent, "jkt")) wanted.add(agent.jkt as string);
+  else if (hasKey(agent, "public_key")) {
+    try {
+      wanted.add(jwkThumbprint(publicKeyJwk(agent.public_key as string)));
+    } catch {
+      wanted.add(""); // a key that cannot be read binds to nothing
+    }
+  }
+  if (hasKey(a, "agent_jkt")) wanted.add(a.agent_jkt as string);
+  if (wanted.size === 0) return [null, false];
+  const presented = thumbprintOf(hasKey(ctx, "agent_jwk") ? ctx.agent_jwk : null);
+  if (presented === null || wanted.size !== 1 || !wanted.has(presented)) return ["agent_key_mismatch", true];
+  return [null, true];
+}
+
 // ---------- checking ----------
 
 export interface CheckerOptions {
@@ -1336,6 +1799,11 @@ export interface CheckerOptions {
   /** Policy: block mandates without a payee list (payees_required). */
   requirePayees?: boolean;
   webauthn?: WebauthnOptions;
+  /** statusList(uri) -> the Status List Token (compact JWT) at that uri; throws when unreachable (spec 15.5). */
+  statusList?: ((uri: string) => Awaitable<unknown>) | null;
+  /** Public keys (this spec's format) of the status list issuers this checker trusts, obtained out of band. */
+  statusListKeys?: readonly string[];
+  statusListMaxAgeMs?: number;
 }
 
 export class Checker {
@@ -1356,6 +1824,9 @@ export class Checker {
   private readonly officers: ReadonlySet<string>;
   private readonly requirePayees: boolean;
   private readonly webauthn: WebauthnOptions;
+  private readonly statusList: ((uri: string) => Awaitable<unknown>) | null;
+  private readonly statusListKeys: readonly string[];
+  private readonly statusListMaxAgeMs: number;
 
   constructor(o: CheckerOptions) {
     const ms = (v: number) => BigInt(Math.round(v)) * 1000n;
@@ -1376,6 +1847,9 @@ export class Checker {
     this.officers = new Set(o.officers ?? []);
     this.requirePayees = o.requirePayees ?? false;
     this.webauthn = o.webauthn ?? {};
+    this.statusList = o.statusList ?? null;
+    this.statusListKeys = [...(o.statusListKeys ?? [])];
+    this.statusListMaxAgeMs = o.statusListMaxAgeMs ?? 3_600_000;
   }
 
   /**
@@ -1415,12 +1889,15 @@ export class Checker {
 
   /**
    * Check one payment against one mandate. Never throws on input; always resolves to a signed decision.
-   * `payeeApprovals`: signed payee approvals that travel with the payment (spec 7.2), used for 0.5 mandates only;
-   * a 0.4 mandate is checked exactly as in 0.4.
+   * `payeeApprovals`: signed payee approvals that travel with the payment (spec 7.2), used for 0.5 and 0.6 mandates
+   * only; a 0.4 mandate is checked exactly as in 0.4.
+   * `context` (0.6 mandates, spec 15): what the checker's own systems established, never what the agent claims:
+   * `agent_jwk` (the public JWK of the key the agent proved, such as a PAP Session JWT key or a DPoP key),
+   * `counterparty` (the domain the agent acts towards), `principal` ({id, salt}). Ignored for 0.4 and 0.5 mandates.
    */
-  async check(mandate: unknown, payment: unknown, payeeApprovals?: unknown): Promise<JsonDict> {
+  async check(mandate: unknown, payment: unknown, payeeApprovals?: unknown, context?: unknown): Promise<JsonDict> {
     return this.checked(mandate, payment, (pHash, at, checks, state) =>
-      this.run(mandate, payment, pHash, at, checks, state, new Set(), null, new Set(), payeeApprovals));
+      this.run(mandate, payment, pHash, at, checks, state, new Set(), null, new Set(), payeeApprovals, context));
   }
 
   /**
@@ -1428,9 +1905,11 @@ export class Checker {
    * Returns the final decision (allow or block, signed, naming the escalation and the override), a later
    * escalation if re-checking hit another one, or an escalate `override_invalid` / `override_not_authorized`.
    */
-  async resolve(mandate: unknown, payment: unknown, decision: unknown, override: unknown, payeeApprovals?: unknown): Promise<JsonDict> {
+  async resolve(
+    mandate: unknown, payment: unknown, decision: unknown, override: unknown, payeeApprovals?: unknown, context?: unknown,
+  ): Promise<JsonDict> {
     return this.checked(mandate, payment, (pHash, at, checks, state) =>
-      this.resolveRun(mandate, payment, decision, override, pHash, at, checks, state, payeeApprovals));
+      this.resolveRun(mandate, payment, decision, override, pHash, at, checks, state, payeeApprovals, context));
   }
 
   /**
@@ -1452,7 +1931,7 @@ export class Checker {
       } else if (hasKey(r, "delegation_hash") && linkParties.has(r.delegation_hash as string)) {
         parties = linkParties.get(r.delegation_hash as string)!;
       } else if (hasKey(r, "payee_approval_hash")) {
-        if (versionOf(md, "mandate") !== V5 || payeeApprovalProblem(payeeApproval)) return false;
+        if (!V56.includes(versionOf(md, "mandate")) || payeeApprovalProblem(payeeApproval)) return false;
         const a = payeeApproval as JsonDict;
         if (!same(a.mandate, { id: md.id, hash: mandateHash(md) }) || r.payee_approval_hash !== payeeApprovalHash(a)) return false;
         parties = new Set([...mandateParties, ...(a.sigs as JsonDict[]).map((s) => personKey(s.signer as JsonDict))]);
@@ -1604,13 +2083,13 @@ export class Checker {
   }
 
   /** Steps 1-6: parse, then every signature on the objects themselves. No external system is asked. */
-  private authentic(m: unknown, p: unknown, pHash: string | null, approvals?: unknown): string | null {
+  private authentic(m: unknown, p: unknown, pHash: string | null, approvals?: unknown, context?: unknown): string | null {
     if (mandateProblem(m)) return "mandate_malformed";
     if (pHash === null || paymentProblem(p)) return "payment_malformed";
     const md = m as JsonDict, pd = p as JsonDict;
     const mv = versionOf(md, "mandate");
-    // Step 2: every payee approval presented is well formed (0.5 mandates only).
-    if (mv === V5 && approvals !== undefined && approvals !== null && approvalsProblem(approvals)) return "payee_approval_invalid";
+    // Step 2: every payee approval presented is well formed (0.5 and 0.6 mandates only).
+    if (V56.includes(mv) && approvals !== undefined && approvals !== null && approvalsProblem(approvals)) return "payee_approval_invalid";
     const mh = mandateHash(md);
     if ((pd.mandate as JsonDict).hash !== mh) return "mandate_mismatch";
     const [sigs] = signatures(md);
@@ -1627,7 +2106,7 @@ export class Checker {
       && !verify("payment", pHash, hasKey(pd, "agent_sig") ? pd.agent_sig : null, agent.public_key, this.webauthn)) {
       return "agent_bad_signature";
     }
-    return null;
+    return mv === V6 ? bound(md, context) : null;
   }
 
   /**
@@ -1637,9 +2116,9 @@ export class Checker {
   private async run(
     m: unknown, p: unknown, pHash: string | null, at: Micros, checks: string[], state: State,
     waive: ReadonlySet<string> = new Set(), claimed: boolean | null = null, vouched: ReadonlySet<string> = new Set(),
-    approvals?: unknown,
+    approvals?: unknown, context?: unknown,
   ): Promise<string | JsonDict | null> {
-    const bad = this.authentic(m, p, pHash, approvals);
+    const bad = this.authentic(m, p, pHash, approvals, context);
     if (bad) return bad;
     const md = m as JsonDict, pd = p as JsonDict;
     const mh = mandateHash(md);
@@ -1663,6 +2142,8 @@ export class Checker {
     checks.push("mandate_valid");
     const agent = md.agent as JsonDict;
     if (hasKey(agent, "public_key")) checks.push("agent_signed");
+    const v6 = versionOf(md, "mandate") === V6;
+    if (v6) checks.push(...boundChecks(md, context));
     checks.push("account_held");
     const [sigs, threshold] = signatures(md);
     if (chain.length) {
@@ -1710,15 +2191,21 @@ export class Checker {
       else if (waive.has("status_unavailable")) checks.push("status_unavailable_approved");
       else return "status_unavailable";
     }
+    const listedBad = await this.listedStatus(md, at, checks, waive);
+    if (listedBad) return listedBad;
     checks.push("not_revoked");
     const sc = md.scope as JsonDict;
     const fa = pd.from_account as JsonDict;
+    if (v6 && hasKey(sc, "counterparties")) { // step 18a (spec 15.2): exact match, no wildcards
+      const cpBad = counterpartyStep(sc, context, checks);
+      if (cpBad) return cpBad;
+    }
     if (hasKey(sc, "rails") && !(sc.rails as string[]).includes(pd.rail as string)) return "rail_not_allowed";
     const payeeAcc = (pd.payee as JsonDict).account as JsonDict;
     if (!railFits(pd.rail as string, pd.currency as string, [fa, payeeAcc])) return "rail_mismatch";
     if (pd.currency !== sc.currency) return "currency_mismatch";
     const amt = parseAmount(pd.amount, pd.currency);
-    if (versionOf(md, "mandate") === V5) {
+    if (V56.includes(versionOf(md, "mandate"))) {
       const b = await this.payee(md, mh, chain, sigs, pd, amt, at, checks, state, waive,
         Array.isArray(approvals) ? (approvals as JsonDict[]) : [], known);
       if (b) return b;
@@ -1980,11 +2467,193 @@ export class Checker {
     return sd.status as string;
   }
 
+  /**
+   * Step 17a (0.6, spec 15.5): the mandate's entry in its Token Status List. VALID passes, INVALID is mandate_revoked
+   * and SUSPENDED mandate_suspended (both block); anything else could not be confirmed: status_unavailable (escalate).
+   */
+  private async listedStatus(m: JsonDict, at: Micros, checks: string[], waive: ReadonlySet<string>): Promise<string | null> {
+    if (versionOf(m, "mandate") !== V6 || !hasKey(m, "status")) return null;
+    const ref = (m.status as JsonDict).status_list as JsonDict;
+    let st: number | null = null;
+    if (this.statusList !== null) {
+      try {
+        const token = await this.statusList(ref.uri as string);
+        st = statusListStatus(token, ref.uri as string, ref.idx as number, this.statusListKeys, new Date(Number(at / 1000n)),
+          this.statusListMaxAgeMs);
+      } catch {
+        st = null; // no statement about the mandate
+      }
+    }
+    if (st === STATUS_INVALID) return "mandate_revoked";
+    if (st === STATUS_SUSPENDED) return "mandate_suspended";
+    if (st === STATUS_VALID) checks.push("status_list_valid");
+    else if (waive.has("status_unavailable")) checks.push("status_list_unavailable_approved");
+    else return "status_unavailable";
+    return null;
+  }
+
+  /**
+   * Check a principal-signed approval of one operation under a 0.6 mandate (spec 15.4). Never throws on input; always
+   * resolves to a signed gleipnir/decision/0.6 that names the operation instead of a payment. `operation` is the
+   * counterparty's own record ({operation_id, revision, terms?, expires_at} in UTC); `context`: `counterparty` (the
+   * checker's own domain, required), `agent_jwk`, `principal`. The payment log makes each (counterparty, operation_id)
+   * single-use: the same approval again gets the same decision, any other approval of it is operation_replayed.
+   */
+  async checkOperation(mandate: unknown, approval: unknown, operation: unknown, context?: unknown): Promise<JsonDict> {
+    const at = microsFromDate(this.clock());
+    const checks: string[] = [];
+    const state: State & { approvers?: Person[] } = { registered: false, key: "" };
+    let reason: string | JsonDict | null;
+    try {
+      reason = await this.operationRun(mandate, approval, operation, context, at, checks, state);
+    } catch (e) {
+      reason = e instanceof Stop ? e.reason : "operation_approval_invalid"; // unexpected input never allows
+    }
+    if (isDict(reason)) return reason; // the same approval again: the decision already made, unchanged
+    const d = this.operationDecision(mandate, approval, operation, reason, checks, at, state);
+    if (state.registered) {
+      try {
+        if (d.outcome === "allow") await this.payments.remember(state.key, d);
+        else await this.payments.forget(state.key);
+      } catch {
+        // the decision still stands; the log is the checker's to fix
+      }
+    }
+    return d;
+  }
+
+  private operationDecision(
+    m: unknown, a: unknown, op: unknown, reason: string | null, checks: string[], at: Micros,
+    state: State & { approvers?: Person[] },
+  ): JsonDict {
+    const outcome: Outcome = reason === null ? "allow" : ESCALATE.has(reason) ? "escalate" : "block";
+    const mid = isDict(m) && typeof m.id === "string" ? m.id : null;
+    let mh: string | null = null, ah: string | null = null;
+    try {
+      mh = isDict(m) && jcsOk(m) ? mandateHash(m) : null;
+    } catch {
+      mh = null;
+    }
+    try {
+      ah = isDict(a) && jcsOk(a) ? operationApprovalHash(a) : null;
+    } catch {
+      ah = null;
+    }
+    const text = (k: string) => (isDict(op) && hasKey(op, k) && typeof op[k] === "string" ? op[k] : null);
+    const rnd = globalThis.crypto.getRandomValues(new Uint8Array(12));
+    const d: JsonDict = {
+      v: `gleipnir/decision/${V6}`, id: "d_" + [...rnd].map((b) => b.toString(16).padStart(2, "0")).join(""),
+      operation: { id: text("operation_id"), revision: text("revision"), approval_hash: ah }, mandate: { id: mid, hash: mh },
+      outcome, reasons: reason ? [reason] : [], checks, checked_at: fmtTs(at), checker: { id: this.id, public_key: this.publicKey },
+    };
+    if (state.signers) d.signers = state.signers;
+    if (reason === "signer_unknown" && state.unknown && state.unknown.length) d.unknown = state.unknown.map(unkey);
+    if (state.approvers) d.operation_approvers = state.approvers;
+    return sign(this.seed, "decision", d, "sig", V6);
+  }
+
+  /** Spec 15.4, in order; the first failure decides. */
+  private async operationRun(
+    m: unknown, a: unknown, op: unknown, context: unknown, at: Micros, checks: string[], state: State & { approvers?: Person[] },
+  ): Promise<string | JsonDict | null> {
+    if (mandateProblem(m)) return "mandate_malformed";
+    if (versionOf(m, "mandate") !== V6 || operationApprovalProblem(a)) return "operation_approval_invalid";
+    if (operationProblem(op)) return "operation_malformed";
+    const md = m as JsonDict, ad = a as JsonDict, od = op as JsonDict;
+    const ctx = ctxOf(context);
+    const mh = mandateHash(md);
+    if (ad.mandate_hash !== mh) return "mandate_mismatch";
+    const [sigs, threshold] = signatures(md);
+    if (sigs.length === 0 || !sigs.every(([s, sig]) => verify("mandate", mh, sig, s.public_key, this.webauthn, V6))) {
+      return "mandate_bad_signature";
+    }
+    const chain = hasKey(md, "delegation") ? (md.delegation as JsonDict[]) : [];
+    if (chain.length) {
+      const bad = chainProblem(md, chain, this.webauthn);
+      if (bad) return bad;
+    }
+    const ah = operationApprovalHash(ad);
+    const asigs = ad.sigs as JsonDict[];
+    if (!asigs.every((s) => verify("operation_approval", ah, s.sig, (s.signer as JsonDict).public_key, this.webauthn, V6))) {
+      return "operation_approval_invalid";
+    }
+    const [agentBad, agentBound] = opAgent(md, ad, ctx);
+    if (agentBad) return agentBad;
+    if (hasKey(ctx, "principal") && !principalOk(md, ctx.principal)) return "principal_mismatch";
+    const sc = md.scope as JsonDict;
+    if (ad.counterparty !== (hasKey(ctx, "counterparty") ? ctx.counterparty : null)) return "operation_mismatch";
+    if (hasKey(sc, "counterparties") && !(sc.counterparties as string[]).includes(ad.counterparty as string)) {
+      return "counterparty_not_on_mandate";
+    }
+    if (!sameOperation(ad, od)) return "operation_mismatch";
+    const approved = ts(ad.approved_at);
+    if (approved > at + this.maxSkew || approved < ts(md.issued_at)) return "operation_approval_invalid";
+    const key = operationKey(ad.counterparty as string, ad.operation_id as string);
+    state.key = key;
+    let prior: JsonDict | null;
+    try {
+      prior = await this.payments.lookup(key, ah);
+    } catch {
+      return "checker_unavailable";
+    }
+    if (isDict(prior)) return prior; // the same approval again: performed at most once
+    if (at > ts(ad.expires_at)) return "operation_approval_expired";
+    checks.push("mandate_valid");
+    if (agentBound) checks.push("agent_key_bound");
+    if (hasKey(ctx, "principal")) checks.push("principal_confirmed");
+    if (hasKey(sc, "counterparties")) checks.push("counterparty_on_mandate");
+    checks.push("operation_matches");
+    if (chain.length) {
+      const b = await this.chainOk(md, chain, checks, new Set(), state);
+      if (b) return b;
+    } else {
+      await this.signersOk(md, sigs, threshold, checks, new Set(), state);
+    }
+    const [approvers, needed] = await this.companySigners(md, asigs, ad.approved_at, "operation_approval_invalid");
+    checks.push(`operation_approved:${approvers.length}/${needed}`);
+    state.approvers = approvers.map((x) => ({ id: x.id as string, public_key: x.public_key as string }));
+    let ok: unknown;
+    try {
+      ok = await this.payments.register(key, ah);
+    } catch {
+      return "checker_unavailable";
+    }
+    if (ok === false) return "operation_replayed";
+    if (ok !== true) return "checker_unavailable";
+    state.registered = true;
+    if (hasKey(md, "valid_from") && at < ts(md.valid_from)) return "mandate_not_yet_valid";
+    if (at > ts(md.valid_until)) return "mandate_expired";
+    const revoked = await this.revoked(md, mh, chain, sigs, at, this.revocations);
+    if (revoked) return revoked;
+    if (this.revocationFeed !== null) {
+      let fed: unknown;
+      try {
+        fed = await this.revocationFeed();
+      } catch {
+        fed = null;
+      }
+      if (!Array.isArray(fed)) return "status_unavailable";
+      const r = await this.revoked(md, mh, chain, sigs, at, fed);
+      if (r) return r;
+      checks.push("revocation_list_current");
+    }
+    if (hasKey(md, "status_url")) {
+      const st = await this.statusOf(md, mh, chain, sigs, at);
+      if (st === "revoked") return "mandate_revoked";
+      if (st !== "active") return "status_unavailable";
+      checks.push("status_active");
+    }
+    const listedBad = await this.listedStatus(md, at, checks, new Set());
+    if (listedBad) return listedBad;
+    checks.push("not_revoked");
+    return null;
+  }
+
   private async resolveRun(
     m: unknown, p: unknown, d: unknown, o: unknown, pHash: string | null, at: Micros, checks: string[], state: State,
-    approvals?: unknown,
+    approvals?: unknown, context?: unknown,
   ): Promise<string | JsonDict | null> {
-    const bad = this.authentic(m, p, pHash, approvals);
+    const bad = this.authentic(m, p, pHash, approvals, context);
     if (bad) return bad;
     const md = m as JsonDict, pd = p as JsonDict;
     const mh = mandateHash(md);
@@ -2082,7 +2751,7 @@ export class Checker {
       state.key = key;
       return "blocked_by_override";
     }
-    return this.run(m, p, pHash, at, checks, state, waive, heldHere, vouched, approvals);
+    return this.run(m, p, pHash, at, checks, state, waive, heldHere, vouched, approvals, context);
   }
 
   /** Company signatories resolving an over-limit or new-payee escalation (spec 7.1). Throws Stop. */
@@ -2390,7 +3059,7 @@ export function verifyReceipt(
     }
   }
   const checks = get(decision, "checks");
-  const extra = versionOf(decision, "decision") === V5 ? { payee_approved_by: approvedPayeeBy } : {};
+  const extra = V56.includes(versionOf(decision, "decision")) ? { payee_approved_by: approvedPayeeBy } : {};
   return {
     valid: problems.length === 0,
     problems,
@@ -2411,6 +3080,94 @@ export function verifyReceipt(
       from: get(payment, "from_account"), payee: get(payment, "payee.account"),
     },
     ...extra,
+  };
+}
+
+export interface OperationReceipt {
+  valid: boolean;
+  problems: string[];
+  outcome: unknown;
+  reasons: unknown;
+  checked_at: unknown;
+  checker: unknown;
+  company: unknown;
+  agent: unknown;
+  signed_by: string[];
+  authority: string[];
+  approved_by: string[];
+  operation: { counterparty: unknown; id: unknown; revision: unknown; terms: unknown; expires_at: unknown };
+}
+
+/**
+ * Check an operation receipt offline (spec 15.4): mandate + operation approval + the checker's decision. Verifies the
+ * decision against the checker's known keys, that it names exactly this mandate and this approval, every mandate
+ * signature and delegation link, that the approval names the mandate by hash, and that everyone the decision lists as
+ * `signers` and `operation_approvers` has a valid signature in what is presented.
+ */
+export function verifyOperationReceipt(
+  mandate: unknown, approval: unknown, decision: unknown, checkerKeys: Iterable<string> | JsonDict,
+  opts: { webauthn?: WebauthnOptions } = {},
+): OperationReceipt {
+  const wa = opts.webauthn ?? {};
+  const problems: string[] = [];
+  let signedBy: string[] = [];
+  let approvedBy: string[] = [];
+  if (!verifyDecision(decision, checkerKeys)) problems.push("decision_bad_signature");
+  const mOk = mandateProblem(mandate) === null;
+  const md = mandate as JsonDict;
+  if (!mOk) problems.push("mandate_malformed");
+  else {
+    const mh = mandateHash(md);
+    if (get(decision, "mandate.hash") !== mh) problems.push("decision_mandate_mismatch");
+    const [sigs] = signatures(md);
+    const mv = versionOf(md, "mandate");
+    const valid = sigs.filter(([s, sig]) => verify("mandate", mh, sig, s.public_key, wa, mv)).map(([s]) => s);
+    if (sigs.length === 0 || valid.length !== sigs.length) problems.push("mandate_bad_signature");
+    const recorded = get(decision, "signers");
+    const counted = recorded !== null ? persons(recorded) : null;
+    const have = new Set(valid.map(personKey));
+    if (recorded !== null && (counted === null || !counted.every((k) => have.has(k)))) problems.push("mandate_signers_mismatch");
+    signedBy = counted && counted.length ? counted.map((k) => unkey(k).id) : valid.map((s) => s.id as string);
+    const chain = hasKey(md, "delegation") ? (md.delegation as JsonDict[]) : [];
+    const bad = chain.length ? chainProblem(md, chain, wa) : null;
+    if (bad) problems.push(bad);
+  }
+  if (operationApprovalProblem(approval) !== null) problems.push("operation_approval_malformed");
+  else {
+    const ad = approval as JsonDict;
+    const ah = operationApprovalHash(ad);
+    if (!same(get(decision, "operation"), { id: ad.operation_id, revision: ad.revision, approval_hash: ah })) {
+      problems.push("decision_operation_mismatch");
+    }
+    if (mOk && ad.mandate_hash !== mandateHash(md)) problems.push("approval_mandate_mismatch");
+    const validA = new Set((ad.sigs as JsonDict[])
+      .filter((s) => verify("operation_approval", ah, s.sig, (s.signer as JsonDict).public_key, wa, V6))
+      .map((s) => personKey(s.signer as JsonDict)));
+    const rec = get(decision, "operation_approvers");
+    const listed = rec !== null ? persons(rec) : null;
+    if (get(decision, "outcome") === "allow" && (!listed || listed.length === 0 || !listed.every((k) => validA.has(k)))) {
+      problems.push("operation_approval_bad_signature");
+    } else if (listed && listed.length) approvedBy = listed.map((k) => unkey(k).id);
+  }
+  const checks = get(decision, "checks");
+  return {
+    valid: problems.length === 0,
+    problems,
+    outcome: get(decision, "outcome"),
+    reasons: get(decision, "reasons"),
+    checked_at: get(decision, "checked_at"),
+    checker: get(decision, "checker.id"),
+    company: get(mandate, "company.name"),
+    agent: get(mandate, "agent.id"),
+    signed_by: signedBy,
+    authority: Array.isArray(checks)
+      ? checks.filter((c): c is string => typeof c === "string" && (c.startsWith("signer_authorized:") || c.startsWith("operation_approved:")))
+      : [],
+    approved_by: approvedBy,
+    operation: {
+      counterparty: get(approval, "counterparty"), id: get(approval, "operation_id"), revision: get(approval, "revision"),
+      terms: get(approval, "terms"), expires_at: get(approval, "expires_at"),
+    },
   };
 }
 

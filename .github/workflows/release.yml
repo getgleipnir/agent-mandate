@@ -5,7 +5,7 @@ name: release
 # package versions.
 #
 # One-time setup by the account owners:
-# - PyPI: a trusted publisher for each project (owner getgleipnir, repo gleipnir, workflow release.yml,
+# - PyPI: a trusted publisher for each project (owner getgleipnir, repo agent-mandate, workflow release.yml,
 #   environment release). No token is stored anywhere.
 # - npm: the getgleipnir organization and an automation token as the repository secret NPM_TOKEN
 #   (environment release).

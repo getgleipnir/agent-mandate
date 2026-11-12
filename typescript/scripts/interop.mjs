@@ -11,6 +11,9 @@
  *    reports are compared exactly).
  * 4. ECDSA P-256 signers, approvals bound to actions and single-action proofs, written by each
  *    SDK and verified by both verifiers with identical reports; `reconcile` prints the same.
+ * 6. Mandate 0.6 operation approvals (spec 15.4): each language issues a mandate bound to an agent key
+ *    thumbprint, a principal-signed operation approval and a Token Status List; both checkers must give the
+ *    same decisions (valid, wrong agent key, revoked in the status list), and each verifies the other's receipts.
  *
  * Requires `npm run build` first, and `uv` with the Python workspace synced.
  */
@@ -181,6 +184,39 @@ const check = sh(
   { cwd: REPO },
 );
 ok(check.stdout.trim() === "records True manifest True", `bundle files are written exactly as Python writes them (${check.stdout.trim()})`);
+
+// ---- 6. mandates 0.6: operation approvals, agent key thumbprints, Token Status Lists ----------
+console.log("\n== Mandate 0.6 operation approvals: made in one language, checked and receipted in both");
+{
+  const expected = [["valid", "allow", []], ["wrong_agent_key", "block", ["agent_key_mismatch"]],
+    ["revoked", "block", ["mandate_revoked"]]];
+  const pyOp = (args) => sh("uv", ["run", "--quiet", "python", "-I", join(HERE, "py-operation.py"), ...args], { cwd: REPO });
+  const tsOp = (args) => sh(process.execPath, [join(HERE, "ts-operation.mjs"), ...args]);
+  for (const [maker, make] of [["python", pyOp], ["typescript", tsOp]]) {
+    const objs = join(WORK, `${maker}-operation.json`);
+    const made = make(["make", objs]);
+    ok(made.status === 0, `${maker} made a 0.6 mandate, an operation approval and a status list`);
+    if (made.status !== 0) { process.stderr.write(made.stderr); continue; }
+    const results = {};
+    for (const [checker, run] of [["python", pyOp], ["typescript", tsOp]]) {
+      const r = run(["check", objs]);
+      if (r.status !== 0) process.stderr.write(r.stderr);
+      results[checker] = r.status === 0 ? JSON.parse(r.stdout) : [];
+      const got = results[checker].map((x) => [x.name, x.outcome, x.reasons]);
+      ok(JSON.stringify(got) === JSON.stringify(expected), `${maker} objects, ${checker} checker: ${JSON.stringify(got)}`);
+    }
+    const strip = (rows) => rows.map(({ decision, ...rest }) => rest);
+    ok(JSON.stringify(strip(results.python)) === JSON.stringify(strip(results.typescript)),
+      `${maker} objects: both checkers give the same outcomes, reasons and checks`);
+    for (const [checker, verifier, run] of [["python", "typescript", tsOp], ["typescript", "python", pyOp]]) {
+      const dfile = join(WORK, `${maker}-operation-${checker}-decisions.json`);
+      writeFileSync(dfile, JSON.stringify(results[checker]));
+      const v = run(["verify", objs, dfile]);
+      const rows = v.status === 0 ? JSON.parse(v.stdout) : [];
+      ok(rows.length === 3 && rows.every((x) => x.valid), `${maker} objects: ${verifier} verifies the ${checker} checker's receipts`);
+    }
+  }
+}
 
 console.log(failures ? `\n${failures} interop check(s) FAILED` : "\nall interop checks passed");
 process.exit(failures ? 1 : 0);

@@ -10,7 +10,7 @@ Until the action is published as its own repository, use it from this repository
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: getgleipnir/gleipnir/action@main   # or `uses: ./action` inside this repo
+- uses: getgleipnir/agent-mandate/action@main   # or `uses: ./action` inside this repo
   with:
     bundle: evidence/**/*.zip
     expect-key: k_ed25519_56475aa75463474c
@@ -33,7 +33,7 @@ A bundle's `head` (the last record's `SEQ:HASH`) is an output. Store it, then pa
 
 ```yaml
 - id: verify
-  uses: getgleipnir/gleipnir/action@main
+  uses: getgleipnir/agent-mandate/action@main
   with:
     bundle: bundle.zip
     expect-key: ${{ vars.GLEIPNIR_KEY }}
@@ -46,7 +46,7 @@ A bundle's `head` (the last record's `SEQ:HASH`) is an output. Store it, then pa
 ```yaml
 - id: verify
   continue-on-error: true
-  uses: getgleipnir/gleipnir/action@main
+  uses: getgleipnir/agent-mandate/action@main
   with:
     bundle: tampered.zip
 - run: test "${{ steps.verify.outcome }}" = failure && test "${{ steps.verify.outputs.result }}" = INVALID

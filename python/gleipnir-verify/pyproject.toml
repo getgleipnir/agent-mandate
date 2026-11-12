@@ -18,7 +18,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://getgleipnir.com"
-Source = "https://github.com/getgleipnir/gleipnir"
+Source = "https://github.com/getgleipnir/agent-mandate"
 
 [project.scripts]
 gleipnir-verify = "gleipnir_verify.cli:main"

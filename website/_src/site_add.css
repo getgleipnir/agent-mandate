@@ -1,0 +1,30 @@
+
+/* v3: use-case tabs */
+.scen-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;font-family:var(--sans)}
+.scen-tabs button{font:inherit;font-size:.82rem;font-weight:500;cursor:pointer;background:rgba(255,255,255,.08);color:var(--on-ink-soft);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:7px 13px}
+.scen-tabs button:hover{color:var(--on-ink);border-color:rgba(255,255,255,.4)}
+.scen-tabs button[aria-selected="true"]{background:#fff;color:var(--ink);border-color:#fff;font-weight:600}
+.hero-demo{min-width:0}
+.card-note b{font-weight:600;color:var(--soft)}
+.strip .where{display:contents}
+/* call mock */
+.callui{display:flex;flex-direction:column;gap:8px;width:100%;max-width:340px;font-size:.84rem}
+.say{padding:9px 13px;border-radius:14px;max-width:88%;line-height:1.35}
+.say.a{background:#fff;box-shadow:var(--shadow);border-bottom-left-radius:4px}
+.say.b{align-self:flex-end;background:var(--ink);color:var(--on-ink);border-bottom-right-radius:4px}
+/* doc visuals */
+.doc-vis{margin:36px 0 12px}.doc-vis .tile{min-height:0;padding:36px 28px}
+.doc-vis .ui{max-width:420px}.doc-vis .callui{max-width:440px}.doc-vis .stack-ui{max-width:420px}
+.doc-vis .code{max-width:520px;width:100%}
+.limit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:28px 0}
+.limit{background:var(--sand);border-radius:var(--r-md);padding:20px 22px}.limit h3{font-size:1.02rem;font-weight:600;margin-bottom:6px}.limit p{font-size:.94rem;color:var(--soft)}
+@media(max-width:640px){.limit-grid{grid-template-columns:1fr}.scen-tabs button{flex:1 1 auto}}
+.foot-d .foot-base{margin-top:32px}
+.doc-vis .code p{color:#F2EDE3;margin:0;font-size:.84rem;line-height:1.6;max-width:none}
+.doc-vis .code p.c-d{color:#C9C4BA}.doc-vis .code p.c-cap{color:#8E8A82;margin-top:12px;font-size:.76rem}
+.doc-vis .say{margin:0 0 0;max-width:88%}.doc-vis .say.b{color:#F2EDE3}.doc-vis .ui-cap{margin:0}
+.doc-vis .layers small,.doc-vis .ui small{display:block}
+@media(max-width:900px){.top{flex-wrap:wrap;gap:12px}.nav{display:flex;order:3;flex-basis:100%;overflow-x:auto;white-space:nowrap;gap:18px;padding-bottom:4px}}
+.btn:hover{transform:none}
+
+.strip a.mark-w{text-decoration:none}.strip a.mark-w:hover{color:var(--gold-lit)}

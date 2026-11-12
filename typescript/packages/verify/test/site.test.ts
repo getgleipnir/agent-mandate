@@ -31,6 +31,29 @@ for (const name of ["verify", "approve"]) {
   });
 }
 
+describe("site/link (mandate links, experimental; CSP script-src 'self'; style-src 'self')", () => {
+  for (const [name, out, connect] of [["link", "link/link.js", "connect-src 'none'"], ["link/v", "link/v/check.js", "connect-src https:"]] as const) {
+    const html = readFileSync(SITE + name + "/index.html", "utf8");
+    const js = readFileSync(SITE + out, "utf8");
+
+    it(`${name}: no inline script, inline style or external origin; ${connect}`, () => {
+      expect(html).not.toMatch(/<script(?![^>]*\bsrc="(link|check)\.js")[^>]*>/);
+      expect(html).not.toMatch(/\sstyle=|<style|\son[a-z]+=/i);
+      expect(html.match(/(?:src|href)="https?:[^"]+"/g) ?? []).toEqual([]);
+      const csp = /Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1] ?? "";
+      for (const d of ["default-src 'none'", "script-src 'self'", "style-src 'self'", connect]) expect(csp).toContain(d);
+      expect(js).not.toMatch(/XMLHttpRequest|WebSocket|sendBeacon|EventSource|\.innerHTML\b|eval\(|\.style\b/);
+      if (name === "link") expect(js).not.toMatch(/\bfetch\(/);
+    });
+
+    it(`${out} is up to date with site/${name}/src (run \`npm run build:site\`)`, async () => {
+      // @ts-expect-error: plain .mjs build script
+      const { buildScript } = await import("../../../scripts/build-site.mjs");
+      expect((await buildScript(name)) === js, `site/${out} is stale: run \`npm run build:site\``).toBe(true);
+    });
+  }
+});
+
 describe("site pages: content", () => {
   it("verify: says that nothing is uploaded, and offers the checks, including approvers", () => {
     const html = readFileSync(SITE + "verify/index.html", "utf8");
@@ -56,7 +79,7 @@ describe("site/demo (getgleipnir.com/demo, CSP script-src 'self'; style-src 'sel
     expect(html).not.toMatch(/<script(?![^>]*\bsrc="\/demo\/demo\.js")[^>]*>/);
     expect(html).not.toMatch(/\sstyle=|<style|\son[a-z]+=/i);
     expect(html.match(/(?:src|href)="https?:\/\/[^"]+"/g) ?? []).toEqual(["href=\"https://getgleipnir.com/demo/\"",
-      "href=\"https://github.com/getgleipnir/gleipnir\""]);
+      "href=\"https://github.com/getgleipnir/agent-mandate\""]);
     const js = readFileSync(SITE + "demo/demo.js", "utf8");
     expect(js).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|sendBeacon|EventSource|\.innerHTML\b|eval\(/);
   });

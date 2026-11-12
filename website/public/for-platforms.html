@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For teams building AI agents | Gleipnir</title>
+<meta name="description" content="Give your agent a permission the other side can check, across banks, companies and protocols. Open spec, checkers and an MCP server.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0C0E13">
+<link rel="canonical" href="https://getgleipnir.com/for-platforms">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Gleipnir"><meta property="og:url" content="https://getgleipnir.com/for-platforms"><meta property="og:title" content="For teams building AI agents | Gleipnir"><meta property="og:description" content="Give your agent a permission the other side can check, across banks, companies and protocols. Open spec, checkers and an MCP server."><meta property="og:image" content="https://getgleipnir.com/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="For teams building AI agents | Gleipnir"><meta name="twitter:description" content="Give your agent a permission the other side can check, across banks, companies and protocols. Open spec, checkers and an MCP server."><meta name="twitter:image" content="https://getgleipnir.com/og-image.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary"><link rel="alternate" type="text/markdown" href="/skills.md" title="Agent guide">
+<link rel="preload" href="/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Gleipnir", "url": "https://getgleipnir.com/", "logo": "https://getgleipnir.com/assets/icons/icon-512.png", "email": "ivan.voloshyn@getgleipnir.com", "description": "A power of attorney for AI agents: a person or company signs what one agent may do, and the other side can check it before acting.", "disambiguatingDescription": "Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app).", "sameAs": ["https://github.com/getgleipnir"]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="wrap top">
+  <a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a>
+  <nav class="nav" aria-label="Main"><a href="/mandates#how">How it works</a><a href="/mandates#who">Who it’s for</a><a href="/know-your-agent">Know Your Agent</a><a href="/link/">Mandate link</a><a href="/demo/">Payment demo</a><a href="/spec">Spec</a></nav>
+  <a class="btn primary sm" href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call <span aria-hidden="true">→</span></a>
+</header>
+<main id="main" class="wrap plain doc"><p class="eyebrow">Teams building agents</p><h1>For teams building agents</h1><p class="doc-lede">Your agent gets refused because nobody can tell who sent it. If it pays, your partner bank, your auditors and your customers’ finance teams all ask the same question: who allowed the agent to make this payment?</p><div class="doc-vis"><div class="tile" aria-hidden="true"><div class="ui fan"><div class="ui-row head"><span class="ui-label">One mandate · signed once</span></div><div class="ui-row"><span>A bank<small>before it pays</small></span><span class="ui-pill ok">can check</span></div><div class="ui-row"><span>A supplier<small>before it ships</small></span><span class="ui-pill ok">can check</span></div><div class="ui-row"><span>A support line<small>before it talks</small></span><span class="ui-pill ok">can check</span></div><p class="ui-cap">Example. They have to choose to check it.</p></div></div></div><h2>Beyond payments</h2><p>Spec 0.6 adds a profile for agent protocols: the agent is bound by its key, counterparties are domains, no personal data travels, and a person can approve one operation with a passkey. It is a draft written around payments. Other actions are open work, and we want to do them with real teams.</p><p>For agents that call or write to companies today, try the experimental <a href="/link/">mandate link</a>.</p>
+
+<h2>What you get</h2>
+<ul>
+<li><b>A power of attorney per agent</b>, signed by a person who may sign for your customer’s company: approved payees, limits per payment and per period, accounts, expiry.</li>
+<li><b>One check before every transfer</b>, run by you or by your partner bank, with the same result everywhere.</li>
+<li><b>Signed decisions</b> you can hand to your partner bank or an auditor: who authorised the payment, and what was checked.</li>
+<li><b>Revocation that works at once</b>: your customer switches an agent off, and the next payment is blocked.</li>
+</ul>
+
+<h2>Why not just limits inside the platform?</h2>
+<p>Limits and approval flows inside your product are a good start, and they stay. They live in your database, so they mean little to a bank that executes the transfer or to a customer who banks elsewhere. A power of attorney signed by the customer’s signatory is evidence any bank can check against its own records, in the open format.</p>
+
+<h2>For the agents: an MCP server</h2>
+<p>The agent side ships as an MCP server with four tools:</p>
+<ul>
+<li><code>mandate_scope</code>: what the agent may pay right now.</li>
+<li><code>request_mandate</code>: ask a signatory for a power of attorney.</li>
+<li><code>attach_mandate</code>: sign the payment and attach the mandate.</li>
+<li><code>check_payment</code>: ask the bank’s checker before sending.</li>
+</ul>
+<p>A tricked agent, for example one following a hidden instruction in an invoice, gets a clear block and a reason to show the person it works for, before any money moves.</p>
+
+<h2>Start with a shadow pilot</h2>
+<p>Run the checker next to your existing flow for four weeks, without blocking anything. We map your current agent limits and approvals into powers of attorney and report how many agent payments were covered, which would have been blocked and why, and how many went out with no record of who authorised them. You can take the report to your partner bank.</p>
+
+<h2>Questions</h2>
+<div class="faq"><details><summary>Does this change how our payments are executed?</summary><p>No. Transfers go through your bank partners as today. The check adds a decision before execution.</p></details><details><summary>Can we run the checker ourselves?</summary><p>Yes. The reference checker and the MCP server are open source (Apache 2.0).</p></details></div>
+
+<div class="doc-cta"><h2>Test one flow with us, free</h2><p>The check runs next to what you do today, with no access to funds and no effect on your flow.</p><div class="btns spaced"><a class="btn primary" href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call</a><a class="btn line" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Test%20one%20flow">Email Ivan</a></div></div></main>
+<footer class="foot-d">
+  <div class="wrap foot-cols">
+    <div><h4>Product</h4><a href="/mandates#how">How it works</a><a href="/demo/">Live demo</a><a href="/link/">Mandate link</a><a href="/limits">What it doesn’t do</a></div>
+    <div><h4>Who it’s for</h4><a href="/healthcare">Healthcare</a><a href="/insurance">Insurance</a><a href="/collections">Collections</a><a href="/for-banks">Banks and PSPs</a><a href="/for-platforms">Teams building agents</a></div>
+    <div><h4>Developers</h4><a href="/know-your-agent">Know Your Agent</a><a href="/spec">Mandate spec</a><a href="/skills.md">Agent guide</a><a href="https://github.com/getgleipnir/agent-mandate" rel="noopener">GitHub</a></div>
+    <div><h4>Company</h4><a href="/#team">Team</a><a href="https://cal.com/ivan-voloshyn-hfzit4/30min">Book a call</a><a href="mailto:ivan.voloshyn@getgleipnir.com">Email</a><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a></div>
+  </div>
+  <div class="wrap foot-base"><a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a><span>© 2026 Gleipnir · Vienna, Austria</span></div>
+</footer>
+<script src="/assets/site.js" defer></script>
+</body>
+</html>
