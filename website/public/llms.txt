@@ -24,5 +24,3 @@ Now: trade footage sold by the hour. Next: more workers and trades, stereo camer
 
 ## Contact
 Ivan Voloshyn, founder. ivan.voloshyn@getgleipnir.com
-
-Not to be confused with the Gleipnir desktop app for running AI coding agents (gleipnir.app), which is a separate, unrelated product. Gleipnir's earlier project on signed mandates for AI agents is archived at https://getgleipnir.com/mandates.
