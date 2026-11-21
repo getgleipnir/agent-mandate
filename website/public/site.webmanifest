@@ -3,8 +3,8 @@
   "short_name": "Gleipnir",
   "start_url": "/",
   "display": "browser",
-  "background_color": "#0C0E13",
-  "theme_color": "#0C0E13",
+  "background_color": "#08090B",
+  "theme_color": "#08090B",
   "icons": [
     {
       "src": "/assets/icons/icon-192.png",
@@ -22,5 +22,6 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "description": "First-person video of skilled people doing their real jobs, for robot learning."
 }
