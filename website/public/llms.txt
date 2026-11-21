@@ -8,7 +8,7 @@
 - Capture: head-mounted camera, 4K 3840x2880, 4:3, 30 fps, both hands in frame.
 - Delivery: full sessions plus per-task clips with start and end times, a JSON card per clip (task, duration, hands, rework). MP4 (HEVC) by default.
 - Privacy and consent: written release from every worker for every session; every worker is paid for every recorded hour; faces and readable text blurred; audio removed.
-- Quality: first sample graded B+ (88/100) by Kinetic Blocks.
+- Quality: every clip is reviewed for blur, focus and hands in frame.
 - Capacity today: about 12 usable hours per week.
 
 ## Pricing
@@ -16,9 +16,8 @@
 - Non-exclusive commercial training licence from $25 per hour of footage that passes our checks; cheaper above 100 hours.
 - Exclusive sets, recording to a buyer's task list, other trades, stereo cameras and extra sensors: on request.
 
-## Where to find the data
+## How to get a sample
 - Email for a sample: ivan.voloshyn@getgleipnir.com
-- Listings on Kinetic Blocks and Deepen Refinery.
 
 ## Roadmap
 Now: trade footage sold by the hour. Next: more workers and trades, stereo camera with IMU, recording to spec, 100 hours on hand. Then: testing robots on the tasks we film with the businesses that let us in. Goal: a robot for one skilled task.
