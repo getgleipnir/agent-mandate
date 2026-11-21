@@ -1,5 +1,11 @@
 # Gleipnir
 
+> Gleipnir (getgleipnir.com) records egocentric (first-person) video of real skilled trade work for robot learning and video pretraining. Today: a professional electrician on residential construction sites in Slovakia, head-mounted 4K (3840x2880, 4:3, 30 fps), both hands in frame, real paid work including rework. Faces and readable text blurred, written consent per worker per session. Delivered as full sessions plus per-task clips with a JSON card each. Non-exclusive commercial licence from $25 per usable hour; exclusive and custom capture on request. Two founders in Vienna. Contact: ivan.voloshyn@getgleipnir.com
+
+Earlier project (agent mandates, power of attorney for AI agents): https://getgleipnir.com/mandates
+
+## Earlier project
+
 > Gleipnir (getgleipnir.com) is a power of attorney for AI agents. A person or company signs what one agent may do: for whom, toward whom, how much, until when. A bank, payment provider, insurer or call centre can check the signature, the scope and revocation before acting. Company payments are the most complete profile (spec 0.6, draft). The mandate link for agents acting for people is experimental. Other uses are open work. No production customers yet. What it does not do: https://getgleipnir.com/limits
 
 Pages: /healthcare, /insurance, /collections, /for-banks, /for-platforms, /when-agents-call, /know-your-agent, /limits, /spec, /link/, /demo/.
