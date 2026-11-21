@@ -3,161 +3,211 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gleipnir: first-person video of real skilled trades for robot learning</title>
-<meta name="description" content="Egocentric 4K video of professional electricians and other tradespeople doing real paid work on real sites in Central Europe. Blurred, consented, cut into tasks. For robot learning and video pretraining.">
+<title>Gleipnir: teach robots the trades</title>
+<meta name="description" content="First-person 4K video of professionals doing real work on real job sites in Europe. Consented, blurred, cut into tasks. Data for robot learning and video pretraining.">
 <meta name="robots" content="index, follow, max-image-preview:large">
-<meta name="theme-color" content="#0C0E13">
+<meta name="theme-color" content="#08090B">
 <link rel="canonical" href="https://getgleipnir.com/">
-<meta property="og:type" content="website"><meta property="og:site_name" content="Gleipnir"><meta property="og:url" content="https://getgleipnir.com/"><meta property="og:title" content="Gleipnir: first-person video of real skilled trades"><meta property="og:description" content="Egocentric 4K video of real paid trade work on real sites in Central Europe. Blurred, consented, cut into tasks."><meta property="og:image" content="https://getgleipnir.com/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Gleipnir"><meta property="og:url" content="https://getgleipnir.com/"><meta property="og:title" content="Gleipnir: teach robots the trades"><meta property="og:description" content="First-person video of real trade work on real European job sites. Consented, blurred, cut into tasks."><meta property="og:image" content="https://getgleipnir.com/og-image.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM summary">
 <link rel="preload" href="/assets/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/data.css">
-<script src="/assets/data.js" defer></script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Gleipnir","url":"https://getgleipnir.com/","logo":"https://getgleipnir.com/assets/icons/icon-512.png","email":"ivan.voloshyn@getgleipnir.com","description":"Egocentric video of real skilled trades in Central Europe, for robot learning and video pretraining.","disambiguatingDescription":"Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app)."}</script>
+<script src="/assets/data.js"></script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Gleipnir","url":"https://getgleipnir.com/","logo":"https://getgleipnir.com/assets/icons/icon-512.png","email":"ivan.voloshyn@getgleipnir.com","slogan":"Teach robots the trades.","description":"First-person video of professionals doing real work on real job sites in Europe, for robot learning and video pretraining.","disambiguatingDescription":"Gleipnir (getgleipnir.com) is a Vienna-based startup. It is not the Gleipnir desktop app for running AI coding agents (gleipnir.app)."}</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="wrap top">
-  <a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#C9A45C" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a>
-  <nav class="nav" aria-label="Main"><a href="#what">What we record</a><a href="#why">Why it is different</a><a href="#delivery">Delivery</a><a href="#pricing">Pricing</a><a href="#team">Team</a></nav>
-  <a class="btn btn-gold btn-sm" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Sample%20request">Request a sample</a>
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Gleipnir home"><svg viewBox="0 0 34 30" aria-hidden="true"><g fill="none" stroke="#FF6B1A" stroke-linecap="round"><path d="M3 23 C 9 5, 16 30, 21 13 S 31 8, 31 8" stroke-width="3"/><path d="M3 27 C 9 11, 16 34, 21 18 S 31 13, 31 13" stroke-opacity=".5" stroke-width="1.8"/></g></svg>GLEIPNIR</a>
+    <nav class="nav" aria-label="Main"><a href="#mission">Mission</a><a href="#data">The data</a><a href="#how">How it works</a><a href="#road">Roadmap</a><a href="#pricing">Pricing</a></nav>
+    <a class="btn btn-hv btn-sm" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Sample%20request">Get a sample</a>
+  </div>
 </header>
 
 <main id="main">
-<div class="wrap hero">
-  <div>
-    <p class="eyebrow">Egocentric data for physical AI</p>
-    <h1>Real hands doing <em>real trade work</em>, filmed from the worker’s eyes.</h1>
-    <p class="lead">First-person 4K video of professional electricians doing paid work on live construction sites in Central Europe. Not staged, not household chores. Blurred, consented and cut into tasks, ready for robot learning and video pretraining.</p>
-    <div class="cta">
-      <a class="btn btn-gold" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Sample%20request">Request a sample</a>
-      <a class="btn btn-line" href="#delivery">See what you get</a>
+
+<section class="hero" id="hero" aria-label="Intro">
+  <div class="hero-media">
+    <video muted loop playsinline preload="none" aria-hidden="true" data-src="/assets/media/demo.mp4"></video>
+  </div>
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="vf" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="hud" aria-hidden="true">
+    <span class="rec">REC <span id="tc">00:00:00:00</span></span>
+    <span class="hud-r">4K · 3840×2880 · 30 FPS<br>HANDS <b>2/2</b> · FACES <b>BLURRED</b><br>SITE · RESIDENTIAL FIT-OUT · SK</span>
+  </div>
+  <div class="wrap hero-body">
+    <p class="kicker">Egocentric data for physical AI</p>
+    <h1>Teach robots<br>the <span class="hv">trades.</span></h1>
+    <div class="hero-row">
+      <p>We film professionals doing real work on real job sites in Europe, from their own eyes. Electricians first. Every hour is consented, blurred, cut into tasks and graded, ready for robot learning.</p>
+      <div class="cta">
+        <a class="btn btn-hv" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Sample%20request">Get a sample <span class="arrow">→</span></a>
+        <a class="btn btn-ghost" href="#data">See the data</a>
+      </div>
     </div>
   </div>
-  <figure class="frame" id="demo">
-    <video muted loop playsinline autoplay preload="metadata" poster="/assets/media/cover.jpg" aria-label="Sample: electrician connecting wires to terminals, first person">
-      <source src="/assets/media/demo.mp4" type="video/mp4">
-    </video>
-    <div class="placeholder">Sample clip: connecting wires to terminals<br>head-mounted, 4K, 4:3</div>
-    <span class="rec">REC · 4K 30fps</span>
-    <figcaption class="tag">Electrician · residential fit-out · Slovakia</figcaption>
-  </figure>
-</div>
-
-<div class="strip" aria-label="Capture at a glance">
-  <ul class="wrap">
-    <li><b>4K</b><span>3840×2880, 4:3, 30 fps</span></li>
-    <li><b>2 hands</b><span>gloved hands and tools in frame</span></li>
-    <li><b>Real jobs</b><span>paid work, mistakes and rework included</span></li>
-    <li><b>B+</b><span>Kinetic Blocks quality grade, 88/100</span></li>
-    <li><b>EU</b><span>Slovakia today, more sites in Central Europe</span></li>
-  </ul>
-</div>
-
-<section class="light" id="what">
-  <div class="wrap">
-    <p class="eyebrow">What we record</p>
-    <h2 class="h2">The full electrical fit-out of new homes, start to finish.</h2>
-    <p class="sub">One professional electrician, real buildings, real deadlines. Every session is a working day, not a demo. Robots learn from the long tail: cable that snags, a terminal that has to be redone, a box set slightly crooked.</p>
-    <ul class="tasks">
-      <li><span class="mono">01</span>Pulling cable through ceilings and walls</li>
-      <li><span class="mono">02</span>Wall chasing and drilling</li>
-      <li><span class="mono">03</span>Setting and mounting boxes</li>
-      <li><span class="mono">04</span>Stripping and preparing wires</li>
-      <li><span class="mono">05</span>Connecting wires to terminals</li>
-      <li><span class="mono">06</span>Mounting sockets and switches</li>
-      <li><span class="mono">07</span>Installing light fittings</li>
-      <li><span class="mono">08</span>Building and wiring distribution panels</li>
-      <li><span class="mono">09</span>Measuring, testing, fault finding</li>
-    </ul>
-    <p class="next">Next: more electricians and more trades on more sites in Central Europe, and a stereo camera with IMU.</p>
-  </div>
+  <p class="task-now" aria-hidden="true">TASK <span id="task">03 · connect wires to terminals</span></p>
 </section>
 
-<section id="why">
+<div class="marquee" aria-hidden="true"><div class="marquee-track">
+  <span>pulling cable through ceilings</span><span>wall chasing</span><span>setting boxes</span><span>stripping wires</span><span>connecting terminals</span><span>mounting sockets</span><span>installing lights</span><span>wiring panels</span><span>testing circuits</span><span>fault finding</span><span>rework</span>
+  <span>pulling cable through ceilings</span><span>wall chasing</span><span>setting boxes</span><span>stripping wires</span><span>connecting terminals</span><span>mounting sockets</span><span>installing lights</span><span>wiring panels</span><span>testing circuits</span><span>fault finding</span><span>rework</span>
+</div></div>
+
+<section id="mission">
   <div class="wrap">
-    <p class="eyebrow">Why it is different</p>
-    <h2 class="h2">Most egocentric data is household chores from one region. Skilled work on real sites is scarce.</h2>
-    <div class="grid3">
-      <div class="dark-card"><h3>Skilled, tool-heavy tasks</h3><p>Fine manipulation with pliers, screwdrivers, strippers and testers, on objects that change state. The kind of work humanoids are being built for.</p></div>
-      <div class="dark-card"><h3>Real conditions, not a set</h3><p>Dust, bad light, ladders, awkward angles, interruptions and rework. Nothing is rehearsed for the camera.</p></div>
-      <div class="dark-card"><h3>European sites</h3><p>Different buildings, standards and tools from the data that floods the market today. Diversity of place is what buyers keep asking for.</p></div>
+    <p class="kicker rv">Why we exist</p>
+    <h2 class="h2 rv">Robots will learn the trades from the people who <em>know</em> them.</h2>
+    <div class="manifest">
+      <article class="rv"><p class="label">Vision</p><p class="big">Robots that do real work on real job sites, trained by tradespeople, <span>with tradespeople sharing in the value.</span></p></article>
+      <article class="rv"><p class="label">Mission</p><p class="big">Record how professionals <span>actually</span> work, with their consent, and turn it into data robots can learn from.</p></article>
+      <article class="rv"><p class="label">Principle 01 · Real work only</p><p class="small">Paid jobs on live sites. Dust, ladders, bad light, mistakes and rework stay in. Nothing is staged for the camera.</p></article>
+      <article class="rv"><p class="label">Principle 02 · Consent first</p><p class="small">Every worker signs for every session. Faces and text are blurred before anything leaves us. We are building a share of every sale for the people on camera.</p></article>
     </div>
   </div>
 </section>
 
-<section class="light" id="delivery">
+<section id="problem">
+  <div class="wrap split">
+    <div>
+      <p class="kicker rv">The gap</p>
+      <h2 class="h2 rv">Robots learn from data. The trades have almost none.</h2>
+      <p class="lede rv">Language models had the internet. Robots have lab demos and a flood of household clips. The skilled, tool-heavy work humanoids are being built for happens on job sites nobody films.</p>
+    </div>
+    <ol class="facts">
+      <li class="rv"><span class="n">01</span><div><h3>Lab data is clean and narrow</h3><p>Same tables, same objects, same light. Policies break on the first real site.</p></div></li>
+      <li class="rv"><span class="n">02</span><div><h3>Bulk video is chores from one region</h3><p>Folding and dishes in homes. Little fine tool work, little variety of place.</p></div></li>
+      <li class="rv"><span class="n">03</span><div><h3>Skilled work is hard to reach</h3><p>You need trust with contractors and workers to film a real job. That is our access.</p></div></li>
+      <li class="rv"><span class="n">04</span><div><h3>Consent is an afterthought</h3><p>Most footage carries thin releases. Buyers need rights they can defend.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<section id="data">
   <div class="wrap">
-    <p class="eyebrow">Delivery</p>
-    <h2 class="h2">Full jobs plus per-task clips, with a card for every clip.</h2>
-    <div class="deliver">
-      <ul class="checks">
-        <li><div><b>Full sessions and task clips.</b> <span>Each job from start to finish, and cut into tasks with start and end times.</span></div></li>
-        <li><div><b>Privacy handled.</b> <span>Faces and readable text blurred before delivery. Audio removed unless you ask for it.</span></div></li>
-        <li><div><b>Consent on paper.</b> <span>Written release from each worker for every session, and permission from the contractor. Available for inspection.</span></div></li>
-        <li><div><b>Standard formats.</b> <span>MP4 (HEVC), JSON sidecar per clip. Other formats on request.</span></div></li>
-        <li><div><b>Your licence.</b> <span>Non-exclusive commercial training by default. Exclusive sets and recording to your spec on request.</span></div></li>
-      </ul>
-      <div>
-<pre class="json" aria-label="Example clip card"><code>{
+    <p class="kicker rv">The data</p>
+    <h2 class="h2 rv">One job. Every task cut, labelled and <em>checked.</em></h2>
+    <p class="lede rv">From our first sample set: an electrician fitting out a new home in Slovakia. Hover a clip to play it.</p>
+
+    <div class="console rv" role="group" aria-label="Sample set viewer">
+      <div class="console-bar">
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>sample_set / electrician_sk / session_15d33fc59952</span>
+        <span class="pills"><span class="pill on">blur ✓</span><span class="pill on">consent ✓</span><span class="pill">4K HEVC</span><span class="pill">KB grade B+</span></span>
+      </div>
+      <div class="console-body">
+        <div class="viewer">
+          <div class="clips">
+            <figure class="clip" data-src="/assets/media/clip_1.mp4"><video muted loop playsinline preload="none"></video><span class="corner">s01</span><span class="ph">strip</span><figcaption class="cap"><b>01</b> strip wire ends at wall box · 21.6s</figcaption></figure>
+            <figure class="clip" data-src="/assets/media/clip_3.mp4"><video muted loop playsinline preload="none"></video><span class="corner">s02</span><span class="ph">prepare</span><figcaption class="cap"><b>02</b> prepare wires · 54.5s</figcaption></figure>
+            <figure class="clip" data-src="/assets/media/clip_5.mp4"><video muted loop playsinline preload="none"></video><span class="corner">s03</span><span class="ph">connect</span><figcaption class="cap"><b>03</b> connect wires to terminals · 99.3s</figcaption></figure>
+            <figure class="clip" data-src="/assets/media/clip_7.mp4"><video muted loop playsinline preload="none"></video><span class="corner">s04</span><span class="ph">mount</span><figcaption class="cap"><b>04</b> mount and tighten screws · 35.6s</figcaption></figure>
+            <figure class="clip" data-src="/assets/media/clip_9.mp4"><video muted loop playsinline preload="none"></video><span class="corner">s05</span><span class="ph">rework</span><figcaption class="cap"><b>05</b> rework terminals, remount · 90.5s</figcaption></figure>
+            <figure class="clip" data-src="/assets/media/clip_6.mp4"><video muted loop playsinline preload="none"></video><span class="corner">s03</span><span class="ph">detail</span><figcaption class="cap"><b>03</b> terminals, later in the task</figcaption></figure>
+          </div>
+          <div class="timeline">
+            <div class="tl-head"><span>session timeline · 5 tasks · 5 min 01 s</span><span>rework marked</span></div>
+            <div class="tl" aria-label="Task timeline">
+              <span class="g1" title="strip wire ends, 21.6 s">strip</span>
+              <span class="g2" title="prepare wires, 54.5 s">prepare</span>
+              <span class="g3" title="connect to terminals, 99.3 s">connect to terminals</span>
+              <span class="g4" title="mount and tighten, 35.6 s">mount</span>
+              <span class="g5 rw" title="rework and remount, 90.5 s">rework · remount</span>
+            </div>
+          </div>
+        </div>
+<pre class="card-json" aria-label="Clip card"><code><span class="c">// clip card, one per task</span>
+{
   <span class="k">"clip_id"</span>: <span class="s">"15d33fc59952_s03"</span>,
   <span class="k">"task"</span>: <span class="s">"connect wires to terminals"</span>,
   <span class="k">"trade"</span>: <span class="s">"electrician"</span>,
-  <span class="k">"site"</span>: <span class="s">"residential, interior fit-out"</span>,
+  <span class="k">"site"</span>: <span class="s">"residential fit-out"</span>,
   <span class="k">"country"</span>: <span class="s">"SK"</span>,
   <span class="k">"duration_s"</span>: 99.3,
   <span class="k">"resolution"</span>: <span class="s">"3840x2880"</span>,
   <span class="k">"fps"</span>: 30,
   <span class="k">"camera"</span>: <span class="s">"head-mounted, wide"</span>,
-  <span class="k">"hands_in_frame"</span>: <span class="s">"both, gloved"</span>,
+  <span class="k">"hands"</span>: <span class="s">"both, gloved"</span>,
+  <span class="k">"rework"</span>: false,
   <span class="k">"faces_blurred"</span>: true,
   <span class="k">"text_blurred"</span>: true,
-  <span class="k">"rework"</span>: false,
-  <span class="k">"consent"</span>: <span class="s">"written, per session"</span>
+  <span class="k">"consent"</span>: <span class="s">"written, per session"</span>,
+  <span class="k">"licence"</span>: <span class="s">"commercial, non-exclusive"</span>
 }</code></pre>
-        <p class="caption">Example card from the sample set.</p>
       </div>
+    </div>
+
+    <div class="stats rv">
+      <div><b>4K</b><span>3840×2880, 4:3, 30 fps, wide view of both hands</span></div>
+      <div><b>B+<small>88/100</small></b><span>Kinetic Blocks quality grade on our first sample</span></div>
+      <div><b>9</b><span>electrical tasks we record, from cable pulling to testing</span></div>
+      <div><b>12<small>h/wk</small></b><span>usable footage today, growing with every new site</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <p class="kicker rv">How it works</p>
+    <h2 class="h2 rv">From a working day to a training-ready dataset.</h2>
+    <ol class="steps">
+      <li class="rv"><span class="n">01 / RECORD</span><h3>On the job</h3><p>A head-mounted camera on a professional during paid work. Both hands in frame, a signed release per session.</p></li>
+      <li class="rv"><span class="n">02 / CLEAN</span><h3>Privacy and QC</h3><p>Faces and readable text blurred, audio removed, blurry or empty footage dropped. Processed locally; raw video never leaves our machines.</p></li>
+      <li class="rv"><span class="n">03 / CUT</span><h3>Tasks and cards</h3><p>Full sessions cut into tasks with start and end times, plus a JSON card per clip: task, hands, rework.</p></li>
+      <li class="rv"><span class="n">04 / DELIVER</span><h3>In your format</h3><p>MP4 (HEVC) and JSON by default. Non-exclusive licence, or exclusive sets and recording to your task list.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section id="road">
+  <div class="wrap">
+    <p class="kicker rv">Roadmap</p>
+    <h2 class="h2 rv">Data is the first step, not the last.</h2>
+    <p class="lede rv">Every hour we record tells us which tasks repeat, where robots would help and which sites would let them in. That is how we climb.</p>
+    <div class="ladder">
+      <div class="rung now rv"><span class="when">Now</span><div><h3>Trade footage, sold by the hour</h3><p>Electricians on residential sites in Slovakia. Samples on Kinetic Blocks and Deepen Refinery.</p></div><span class="st">live</span></div>
+      <div class="rung rv"><span class="when">Next</span><div><h3>Stereo, IMU and recording to spec</h3><p>Stereo rig with motion sensors, more workers and trades, capture to a lab’s task list. 100 hours on hand.</p></div><span class="st">building</span></div>
+      <div class="rung rv"><span class="when">Then</span><div><h3>Robots on our sites</h3><p>Test robot policies on the tasks we record, with the contractors who already let us in.</p></div><span class="st">planned</span></div>
+      <div class="rung rv"><span class="when">Goal</span><div><h3>A robot for one trade task</h3><p>Pick the operation the data says is first to go, and build for it with the people who do it today.</p></div><span class="st">vision</span></div>
     </div>
   </div>
 </section>
 
 <section id="pricing">
   <div class="wrap">
-    <p class="eyebrow">Pricing</p>
-    <h2 class="h2">Priced per hour of usable footage.</h2>
-    <p class="sub">You pay for footage that passes our checks, not for hours on site.</p>
-    <div class="price">
-      <div class="card"><span class="num">SAMPLE</span><b>Free</b><p>A few minutes of task clips and cards, to check quality and fit before you buy.</p></div>
-      <div class="card feat"><span class="num">NON-EXCLUSIVE</span><b>from $25/h</b><p>Commercial training licence. Archive and new footage as it is recorded. Volume pricing above 100 hours.</p></div>
-      <div class="card"><span class="num">CUSTOM</span><b>On request</b><p>Exclusive sets, recording to your task list, other trades, stereo and extra sensors.</p></div>
+    <p class="kicker rv">Pricing</p>
+    <h2 class="h2 rv">You pay for usable footage, not hours on site.</h2>
+    <div class="plans">
+      <div class="plan rv"><span class="t">Sample</span><b>Free</b><p>A few minutes of task clips and cards, to check quality and fit.</p></div>
+      <div class="plan feat rv"><span class="t">Non-exclusive</span><b>from $25/h</b><p>Commercial training licence. Archive plus new footage as it is recorded. Volume pricing above 100 hours.</p></div>
+      <div class="plan rv"><span class="t">Custom</span><b>On request</b><p>Exclusive sets, your task list, other trades, stereo and extra sensors.</p></div>
     </div>
   </div>
 </section>
 
-<section class="light" id="team">
+<section id="team">
   <div class="wrap">
-    <p class="eyebrow">Team</p>
-    <h2 class="h2">Two founders in Vienna, with family and partners in the trades.</h2>
+    <p class="kicker rv">Team</p>
+    <h2 class="h2 rv">Two founders in Vienna. Family in the trades.</h2>
     <div class="team">
-      <div class="card"><h3>Ivan Voloshyn</h3><p>Co-founder. Runs capture, the processing pipeline and buyers.</p></div>
-      <div class="card"><h3>Tatiana Khokhlova</h3><p>Co-founder. Runs consent, contracts and data protection.</p></div>
+      <div class="member rv"><span class="avatar" aria-hidden="true">IV</span><div><h3>Ivan Voloshyn</h3><p>Co-founder. Capture, the processing pipeline and buyers.</p></div></div>
+      <div class="member rv"><span class="avatar" aria-hidden="true">TK</span><div><h3>Tatiana Khokhlova</h3><p>Co-founder. Consent, contracts and data protection.</p></div></div>
     </div>
   </div>
 </section>
 
-<section id="contact">
-  <div class="wrap contact">
-    <div>
-      <p class="eyebrow">Contact</p>
-      <h2 class="h2">Tell us the tasks, the volume and the format. We will send a sample.</h2>
-    </div>
-    <div class="box">
-      <p>Email Ivan directly. We usually answer within a day.</p>
-      <p class="mono">ivan.voloshyn@getgleipnir.com</p>
-      <a class="btn btn-gold" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Sample%20request">Request a sample</a>
+<section class="final" id="contact">
+  <div class="wrap">
+    <h2 class="rv">Need hands<br>that <span>know the job?</span></h2>
+    <p class="rv">Tell us the tasks, the volume and the format. We send a sample within a day.</p>
+    <div class="cta rv">
+      <a class="btn btn-hv" href="mailto:ivan.voloshyn@getgleipnir.com?subject=Sample%20request">Get a sample <span class="arrow">→</span></a>
+      <a class="btn btn-ghost" href="mailto:ivan.voloshyn@getgleipnir.com">ivan.voloshyn@getgleipnir.com</a>
     </div>
   </div>
 </section>
@@ -165,8 +215,8 @@
 
 <footer class="foot">
   <div class="wrap">
-    <span>© 2026 Gleipnir, Vienna</span>
-    <nav aria-label="Footer"><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a><a href="/mandates">Agent mandates (earlier project)</a></nav>
+    <span>© 2026 Gleipnir · Vienna</span>
+    <nav aria-label="Footer"><a href="/imprint">Imprint</a><a href="/privacy">Privacy</a><a href="/mandates">Earlier project</a></nav>
   </div>
 </footer>
 </body>
