@@ -6,7 +6,7 @@ name: action-test
 
 on:
   push:
-    branches: [main]
+    branches: [main, kya-mandate-spec]
     paths: ["action/**", "typescript/packages/verify/**", ".github/workflows/action-test.yml"]
   pull_request:
     paths: ["action/**", "typescript/packages/verify/**", ".github/workflows/action-test.yml"]
