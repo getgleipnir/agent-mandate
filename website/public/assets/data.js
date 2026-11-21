@@ -12,12 +12,10 @@
 
   // Attach a source only if the file is really there, so a missing clip never shows a broken box.
   function loadVideo(video, src, onOk) {
-    fetch(src, { method: "HEAD" }).then(function (r) {
-      if (!r.ok) return;
-      video.src = src;
-      video.addEventListener("loadeddata", onOk, { once: true });
-      video.load();
-    }).catch(function () {});
+    video.addEventListener("loadeddata", onOk, { once: true });
+    video.preload = "auto";
+    video.src = src;
+    video.load();
   }
 
   onReady(function () {
