@@ -225,3 +225,11 @@ section{padding-block:130px;position:relative}
   .hud .rec::before{animation:none}
   html{scroll-behavior:auto}
 }
+
+/* why / how / what */
+.why{margin-top:64px;display:grid;gap:0;border-top:1px solid var(--line)}
+.why li{display:grid;grid-template-columns:160px 1fr;gap:32px;align-items:baseline;padding:34px 0;border-bottom:1px solid var(--line)}
+@media(max-width:760px){.why li{grid-template-columns:1fr;gap:10px}}
+.why .q{font-family:var(--mono);font-size:.82rem;letter-spacing:.18em;text-transform:uppercase;color:var(--hv)}
+.why p{font-size:clamp(1.6rem,3.2vw,2.6rem);line-height:1.12;letter-spacing:-.025em;font-weight:700;max-width:52rem}
+.why p span{color:var(--fg-3)}
