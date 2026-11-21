@@ -233,3 +233,25 @@ section{padding-block:130px;position:relative}
 .why .q{font-family:var(--mono);font-size:.82rem;letter-spacing:.18em;text-transform:uppercase;color:var(--hv)}
 .why p{font-size:clamp(1.6rem,3.2vw,2.6rem);line-height:1.12;letter-spacing:-.025em;font-weight:700;max-width:52rem}
 .why p span{color:var(--fg-3)}
+
+/* plain pages */
+.plainpage .top{background:rgba(8,9,11,.92);border-bottom-color:var(--line)}
+.prose{padding-top:150px;padding-bottom:110px;max-width:760px}
+.prose h1{font-size:clamp(2.4rem,5vw,3.6rem);font-weight:800;letter-spacing:-.035em}
+.prose h2{font-size:1.2rem;font-weight:700;margin-top:40px}
+.prose p{color:var(--fg-2);margin-top:12px}
+.prose a{color:var(--hv-2)}
+.prose .muted{color:var(--fg-3);font-family:var(--mono);font-size:.85rem}
+
+/* faq */
+.faq{display:grid;grid-template-columns:.8fr 1.2fr;gap:64px;align-items:start}
+@media(max-width:900px){.faq{grid-template-columns:1fr;gap:32px}}
+.faq-list details{border-bottom:1px solid var(--line);padding:22px 0}
+.faq-list details:first-child{border-top:1px solid var(--line)}
+.faq-list summary{cursor:pointer;list-style:none;font-weight:650;font-size:1.12rem;display:flex;justify-content:space-between;gap:20px}
+.faq-list summary::-webkit-details-marker{display:none}
+.faq-list summary::after{content:"+";font-family:var(--mono);color:var(--hv);font-size:1.2rem;line-height:1}
+.faq-list details[open] summary::after{content:"–"}
+.faq-list p{color:var(--fg-2);margin-top:12px;max-width:40rem}
+.listed{margin-top:22px;color:var(--fg-3);font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;text-align:center}
+.listed b{color:var(--fg-2);font-weight:500}
